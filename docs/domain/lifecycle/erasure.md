@@ -8,6 +8,18 @@ Discord 上の通常の Message delete は compliance erasure ではない。通
 
 本人、Discord、法的要請等による erasure requirement だけが物理消去 workflow を開始する。
 
+## Request Boundary
+
+現在の OJIverse メンバーは、DWH と同じ community identity で認証された self-service deletion request を発行できる。
+
+本人による request は自分自身の Discord User を subject とする。他ユーザーの erasure を一般ユーザーが要求することはできない。
+
+Discord からの要求、法的要請、運営上の compliance request は管理者経路から同じ Erasure Run へ正規化する。
+
+request の受付時には Erasure Run ID を発行し、accepted / running / completed / failed の状態を request owner から確認可能にする。
+
+Erasure audit record には request metadata と execution result だけを残し、削除対象 API Data の本文や復元可能な copy を保存しない。
+
 ## Authoritative Discovery
 
 削除対象の発見は Observation Archive の全走査を最終 authority とする。

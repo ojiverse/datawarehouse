@@ -1,39 +1,56 @@
 # Cloudflare 処理アーキテクチャ（Processing）
 
-本ディレクトリでは、Observation Archive に蓄積された生データを抽出し、正規化・重複排除・順序解決を行って Canonical Store（Apache Iceberg）へ書き込むデータ処理パイプラインのアーキテクチャを定義する。
+本ディレクトリでは、Observation Archive から Canonical Store を生成・再生成する processing architecture を定義する。
 
-## 処理層の分離と障害隔離（Failure Isolation）
+## Failure Isolation
 
-本アーキテクチャの最重要原則は、**正規化・変換処理の障害が、前段の Observation Archive への生データ収集を決して阻害しないこと**にある。
+正規化・Canonical materialization の障害が Observation Archive への ingestion を阻害してはならない。
 
-```mermaid
-flowchart LR
-    Ingest[取り込み層] -->|生データ書き込み| Archive[(R2: Observation Archive)]
-    
-    subgraph ProcessingPipeline[変換・正規化パイプライン]
-        EventNotify[R2 Event Notifications / Queue] --> ProcWorker[Processing Worker / Pipelines]
-        ProcWorker -->|正規化・重複排除| Iceberg[(R2: Canonical Store)]
-    end
-    
-    Archive -.->|新規オブジェクト通知| EventNotify
-```
+Observation Archive が唯一の Source of Evidence であり、Canonical Store はいつでも rebuild 可能な Derived Data とする。
 
-* **イベント駆動型の非同期実行**: Observation Archive（R2）に新しいバッチオブジェクトが保存されたことをトリガー（R2 Event Notifications または Queues）として、処理ワーカーを起動する。
-* **変換パイプライン停止時の安全弁**: 正規化コードの不具合や Iceberg カタログへのコミット失敗が発生した場合、処理ワーカーのみが停止（エラーログ記録と DLQ 退避）する。Observation Archive への生データ書き込みは完全に独立しているため、データ消失は発生しない。修正版コードのデプロイ後、未処理オブジェクトを安全にリプレイ可能とする。
+## first-MVP Materializer
 
-## 実行モデルと Cloudflare Pipelines の位置づけ
+first-MVP の authoritative materializer には PyIceberg + PyArrow を使用する。
 
-* **マイクロバッチ処理の採用**: リアルタイムな1件ずつのストリーミング処理ではなく、R2 にバッチ保存されたオブジェクト単位（数十〜数百件）で正規化を行うマイクロバッチ処理を採用する。これにより、Iceberg のスナップショット過剰生成を防止する。
-* **Cloudflare Pipelines の活用方針**: Cloudflare Pipelines はデータ変換・ストリーム処理の有力な候補であるが、プラットフォーム独自機能への過度なロックインを回避する。標準的な Worker + Queue によるフォールバックが常に可能な状態を維持する。
+materializer は Workers runtime の CPU budget に依存させず、local、CI、専用 batch runtime 等から R2 Data Catalog の Iceberg REST Catalog へ接続できる外部 process とする。
 
-## リプレイ（Replay）と全再構築（Rebuild）の実行モデル
+詳細は [materialization.md](materialization.md) に定義する。
 
-* **増分リプレイ（Incremental Replay）**: 障害発生時やバグ修正時は、R2 のプレフィックス（日付・時間）を指定して未反映の Observation オブジェクト群を再読み込みし、差分のみを Canonical Store へマテリアライズする。
-* **一括全再構築（Full Rebuild）**: スキーマ刷新等の大規模改修時は、専用の Rebuild Worker を起動して R2 の全 Observation オブジェクトを並行スキャンし、新規 Iceberg テーブルへゼロからデータを生成する。
+## Physical Representation
 
-## 分割予定の詳細設計
+Canonical table は Apache Iceberg で管理し、data file は Parquet、compression は Zstandard を baseline とする。
 
-* **Normalization Pipeline**: JSON ペイロードのパース、バリデーション、および型変換の詳細手順
-* **Replay Execution**: 過去オブジェクトの指定と順序を保った再投入メカニズム
-* **Rebuild Strategy**: 大規模全再構築時の並列処理ワーカーの分散とリソースリミット管理
-* **Processing Failure Isolation**: DLQ、リトライ上限、およびアラート発報フロー
+Discord Snowflake は decimal string のまま保持し、分析用 timestamp を別 column として導出する。
+
+## Resumable Rebuild
+
+Full Rebuild 開始時に入力 Archive object set を immutable manifest として固定する。
+
+manifest、checkpoint、chunk state は専用 R2 control bucket に置き、Observation Archive と分離する。
+
+manifest chunk ごとに deterministic な staging Parquet file を生成し、completed chunk を durable に再利用できるようにする。
+
+PyIceberg commit retry では既に登録済み data file を二重登録しない。
+
+## Incremental Trigger
+
+R2 Event Notifications、Cloudflare Queues、Pipelines 等は Canonical freshness を改善する optional trigger として利用できる。
+
+trigger の delivery guarantee を Canonical correctness の前提にしない。
+
+trigger が欠損しても Archive listing と replay / rebuild により収束可能でなければならない。
+
+## Cloudflare Pipelines
+
+Pipelines は将来の incremental materialization 候補とするが、first-MVP の authoritative rebuild mechanism には採用しない。
+
+Pipelines を停止・廃止しても PyIceberg materializer で Canonical を再構築できる状態を維持する。
+
+## 詳細設計
+
+* [materialization.md](materialization.md): PyIceberg runtime、rebuild manifest、checkpoint、Iceberg commit
+
+## 今後分割する詳細設計
+
+* **Incremental Materialization**: freshness optimization と replay convergence
+* **Canonical Promotion**: rebuild table の validation と切り替え

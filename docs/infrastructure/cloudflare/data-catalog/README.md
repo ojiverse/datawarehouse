@@ -1,27 +1,55 @@
 # R2 Data Catalog インフラ設計
 
-本ディレクトリでは、Canonical Store に格納される Apache Iceberg テーブルのメタデータ管理、スキーマ追跡、および R2 SQL との連携を担う R2 Data Catalog の構成と運用設計を定義する。
+本ディレクトリでは Canonical Store の Apache Iceberg catalog と R2 SQL integration を定義する。
 
-## R2 Data Catalog の役割と位置づけ
+## Role
 
-R2 Data Catalog は、オープンなテーブルフォーマットである Apache Iceberg の **REST カタログ** として機能する。
+R2 Data Catalog を Canonical Store の Iceberg REST Catalog として使用する。
 
-* **テーブルメタデータの一元管理**: R2 上のデータファイル（Parquet）に対する最新スナップショットのコミット、スキーマ定義、およびパーティション仕様をカタログ上で一元管理する。
-* **ACID トランザクションの保証**: 複数のワーカーやクエリエンジンが並行してデータにアクセスする際、楽観的並行性制御（OCC）によって安全なスナップショットコミットを実現する。
-* **クエリエンジン連携**: R2 SQL などのクエリエンジンがカタログを参照し、最新テーブルスキーマと走査対象ファイルを即座に特定可能とする。
+Observation Archive の Source of Evidence ownership は持たない。
 
-## テーブル名前空間（Namespace）と初期カタログ構成
+Catalog / Canonical table を失っても Observation Archive から再作成可能でなければならない。
 
-環境（`dev`, `beta`, `prod`）ごとに独立したカタログインスタンスを作成し、以下のテーブル名前空間を管理する。
+## first-MVP Writer
 
-| テーブル名 | 名前空間 | 主なパーティションキー |
-| :--- | :--- | :--- |
-| **`messages`** | `ojiverse_dwh` | `guild_id`, `created_date` (日単位) |
-| **`channels`** | `ojiverse_dwh` | `guild_id` |
-| **`threads`** | `ojiverse_dwh` | `guild_id`, `parent_channel_id` |
+first-MVP の table creation / commit / rebuild には PyIceberg を使用する。
 
-## インフラ設計における確定事項
+PyIceberg は R2 Data Catalog の REST Catalog へ接続し、R2 上の Parquet data file を Iceberg table として commit する。
 
-* **アクセス制御（IAM）**: Processing Worker にのみカタログの書き込み（Commit）権限を付与し、Query API Worker には読み取り専用権限を付与する最小権限ポリシーを適用する。
-* **スキーマ進化（Schema Evolution）の適用フロー**: 列追加や型変更をカタログ経由で安全に適用する手順を確立する。
-* **メンテナンス運用**: 定期的な Iceberg のテーブル最適化（Compaction: 細かい Parquet ファイルのマージ）と、古いスナップショットの整理（Expire Snapshots）の実行体制を整備する。
+Cloudflare Workers 内で独自の Iceberg metadata writer を実装しない。
+
+## Physical Format
+
+Canonical data file は Parquet、compression は Zstandard とする。
+
+staging Parquet file を既存 file として追加する場合、PyIceberg の duplicate file check を有効にする。
+
+Discord Snowflake column は decimal string として保持する。
+
+## Initial Table Scope
+
+first-MVP の必須 table は Message Canonical dataset とする。
+
+Channel、Thread、Reaction 等の table は Product / Canonical requirements が実装対象になった時点で追加する。
+
+## Query
+
+R2 SQL を first-MVP の analytical query engine とする。
+
+R2 SQL / Data Catalog の beta status を前提に、Query semantics を R2 SQL 固有構文へ閉じ込めない。
+
+Catalog が Iceberg REST interface を提供することを exit path とし、別 Iceberg engine からも table を扱える状態を維持する。
+
+## Maintenance
+
+Data Catalog が提供する managed compaction と snapshot expiration を優先して利用する。
+
+同等機能の custom maintenance job を二重に所有しない。
+
+managed feature で扱えない orphan file や rebuild staging file の cleanup だけを独自運用の対象とする。
+
+## Access Control
+
+materializer だけに Catalog / Canonical write 権限を与える。
+
+Query component には read-only capability を付与し、Observation Archive への write 権限を与えない。

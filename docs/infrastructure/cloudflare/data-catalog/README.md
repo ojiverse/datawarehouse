@@ -1,20 +1,27 @@
-# R2 Data Catalog
+# R2 Data Catalog インフラ設計
 
-Canonical Store を Apache Iceberg table として管理するための R2 Data Catalog resource を扱います。
+本ディレクトリでは、Canonical Store に格納される Apache Iceberg テーブルのメタデータ管理、スキーマ追跡、および R2 SQL との連携を担う R2 Data Catalog の構成と運用設計を扱います。
 
-## 現在の方向性
+## R2 Data Catalog の役割と位置づけ
 
-Canonical Store は Observation Archive から再構築可能な analytical representation とします。
+R2 Data Catalog は、オープンなテーブルフォーマットである Apache Iceberg の **REST カタログ** として機能します。
 
-R2 Data Catalog を利用して Iceberg table を管理し、R2 SQL から問い合わせる構成を主要候補とします。
+* **テーブルメタデータの一元管理**: R2 上のデータファイル（Parquet）に対する最新スナップショットのコミット、スキーマ定義、およびパーティション仕様をカタログ上で管理します。
+* **ACID トランザクションの保証**: 複数のワーカーやクエリエンジンが並行してデータにアクセスする際、楽観的並行性制御（OCC）によって安全なスナップショットコミットを実現します。
+* **クエリエンジン連携**: R2 SQL などのクエリエンジンがカタログを参照し、最新のテーブルスキーマと走査対象ファイルを即座に特定できるようにします。
 
-## 設計時に確定する事項
+## テーブル名前空間（Namespace）と初期カタログ構成
 
-- Catalog topology
-- Environment 分離
-- Table namespace
-- Access control
-- Schema migration
-- Operational limits
+環境（dev, beta, prod）ごとに独立したカタログインスタンスを作成し、以下のテーブル名前空間を管理します。
 
-Canonical Data Model そのものは Domain Design で扱います。
+| テーブル名 | 名前空間 | 主なパーティションキー |
+| :--- | :--- | :--- |
+| **`messages`** | `ojiverse_dwh` | `guild_id`, `created_date` (日単位) |
+| **`channels`** | `ojiverse_dwh` | `guild_id` |
+| **`threads`** | `ojiverse_dwh` | `guild_id`, `parent_channel_id` |
+
+## インフラ設計時に確定すべき事項
+
+* **アクセス制御（IAM）**: Processing Worker にのみカタログの書き込み（Commit）権限を付与し、Query API Worker には読み取り専用権限を付与する最小権限ポリシーの適用。
+* **スキーマ進化（Schema Evolution）の適用フロー**: 列追加や型変更をカタログ経由で安全に適用する手順。
+* **メンテナンス運用**: 定期的な Iceberg のテーブル最適化（Compaction: 細かい Parquet ファイルのマージ）と、古いスナップショットの整理（Expire Snapshots）の実行体制。

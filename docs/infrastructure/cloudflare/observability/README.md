@@ -1,29 +1,31 @@
-# Cloudflare オブザーバビリティ
+# Cloudflare オブザーバビリティ設計
 
-Cloudflare 上で稼働する Discord DWH の log、metric、alert の infrastructure を扱います。
+本ディレクトリでは、Cloudflare 上で自律稼働する各コンポーネントの動作状況、健全性、および異常をリアルタイムに把握するためのログ収集、メトリクス集計、およびアラート通知のインフラ設計を扱います。
 
-## 観測対象
+## 観測レイヤーと採用技術
 
-- Gateway connection
-- Heartbeat
-- Resume
-- Observation ingestion
-- R2 write
-- Queue
-- Backfill
-- Canonical processing
-- Canonical lag
-- Error rate
-- Resource quota
+Cloudflare が標準提供する可視化機能および外部連携を活用し、多層的なオブザーバビリティ基盤を整備します。
 
-何を failure と判断するかはアーキテクチャ設計で定義し、ここではそれを観測する具体的なインフラストラクチャを設計します。
+| 観測対象 | 収集手段 | 集約先・可視化 | 主な監視メトリクス |
+| :--- | :--- | :--- | :--- |
+| **Worker 実行・エラー** | Workers Logs / Logpush | Cloudflare ダッシュボード / 外部ログシンク | リクエスト数、CPU 時間、未捕捉例外（5xx） |
+| **Durable Objects（Gateway）** | Workers Analytics Engine | カスタムダッシュボード | メモリ使用量、WebSocket 接続維持時間、Resume 回数 |
+| **キュー滞留とレイテンシ** | Queues Metrics | Cloudflare Metrics | キュー深度（Backlog）、遅延時間、DLQ 投入数 |
+| **ビジネス整合性メトリクス** | カスタムイベントログ | ログ検索 / アラートトリガー | 1分あたりの観測メッセージ数、Backfill 進捗カーソル |
 
-## 設計時に確定する事項
+## アラート発報と通知ルーティング
 
-- Log destination
-- Metric collection
-- Dashboard
-- Alert routing
-- Retention
-- Environment 分離
-- Cost
+[運用アーキテクチャ](../../../architecture/cloudflare/operations/README.md) で定義された異常状態を検知した際、以下の通知ルートを通じて運用者へ迅速にエスカレーションします。
+
+* **重要アラート（P1: 即時対応）**: 
+  * 発報条件: Gateway の連続切断・Resume 連続失敗、R2 への書き込み連続エラー、DLQ へのメッセージ滞留。
+  * 通知先: 運用者向け Discord Webhook（緊急チャンネル）およびプッシュ通知。
+* **警告アラート（P2: 翌営業日確認）**: 
+  * 発報条件: Discord レート制限（429）の一時的頻発、Canonical マテリアライズの軽微な遅延。
+  * 通知先: Discord 運用ログチャンネルへの通常通知。
+
+## インフラ設計時に確定すべき事項
+
+* **Logpush / Tail Workers の設定**: 本番ログを外部（Datadog, Grafana Cloud, または R2 自体）へ長期保管するための転送パイプライン。
+* **ログ保持期間（Retention）とコスト**: Cloudflare 内部でのログ保持期間と、追加ストレージコストの最適化。
+* **ノイズの排除**: 一時的なネットワーク瞬断による自動回復ログと、恒久的な障害ログを適切にフィルタリングするルール設計。

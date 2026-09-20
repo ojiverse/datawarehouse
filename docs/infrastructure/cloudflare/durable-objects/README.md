@@ -1,24 +1,25 @@
-# Cloudflare Durable Objects
+# Cloudflare Durable Objects インフラ設計
 
-Discord Gateway session を Cloudflare 上で所有するための Durable Object infrastructure を扱います。
+本ディレクトリでは、Discord Gateway の常時 WebSocket 接続およびセッション状態を Cloudflare 上で排他的に維持するための Durable Objects（DO）のインフラ構成、名前空間、およびキャパシティ設計を扱います。
 
-## 現在の方向性
+## 名前空間とインスタンスキー設計
 
-1 Gateway session に対して単一の active owner を提供し、session state と Resume に必要な状態を保持する用途を主要候補とします。
+Discord Gateway の単一シャード接続を確実に 1 つのインスタンスでホストするため、以下のキー設計を採用します。
 
-1 shard で開始する前提では、常時 active な Gateway 用 Durable Object が Workers Paid の included usage に収まる可能性を確認しています。
+* **Namespace**: `GATEWAY_SESSION`
+* **Instance Key 規則**: 初期フェーズでは `shard:0`（単一シャード構成）を固定キーとして使用。将来的にギルド数増加に伴いシャード分割が必要になった場合は、`shard:{shard_id}` として動的にインスタンスを分散配置可能とする。
 
-最終的な cost と quota は実測を踏まえて確定します。
+## リソース消費とコスト適合性（Included Usage）
 
-## 設計時に確定する事項
+Cloudflare Workers Paid プランでは、一定量の Durable Objects Duration（GB-s）およびリクエスト数が基本料金に含まれています。
 
-- Namespace
-- Instance key
-- Shard との対応
-- Storage usage
-- Alarm usage
-- Migration
-- Environment 分離
-- Resource monitoring
+* **Duration の試算**: 
+  * 1 インスタンスが 128MB メモリで 24 時間 365 日常時稼働した場合、月間の消費量は約 `0.125 GB × 86,400 秒 × 30 日 ≈ 324,000 GB-s` となります。
+  * これは Workers Paid プランの含まれる枠（Included Duration: 400,000 GB-s）内に十分に収まる計算であり、1 シャードの常時接続であれば追加の従量課金なしで維持できる見込みです。
+* **ベータでの実測検証**: 実際のメモリ使用量推移と WebSocket アイドル時の挙動を Beta 環境でプロファイリングし、この試算の妥当性を最終検証します。
 
-Gateway protocol 上の state machine は Domain Design、Durable Object 上での動作は Architecture Design で扱います。
+## インフラ設計時に確定すべき事項
+
+* **トランザクションストレージの書き込み制御**: セッション ID やシーケンス番号の保存頻度を最適化し、DO Storage の書き込みクォータ超過およびコスト増を回避する。
+* **Alarm API の実行頻度**: ハートビート（約41.25秒間隔）送信タイマーとして Alarm を使用した際のアラーム実行クォータの管理。
+* **ダウンタイム最小化マイグレーション**: Worker スクリプト更新時や DO クラスのマイグレーション時における、WebSocket 切断と新インスタンス起動のハンドオフ手順。

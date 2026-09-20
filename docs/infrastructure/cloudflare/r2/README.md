@@ -1,23 +1,33 @@
-# Cloudflare R2
+# Cloudflare R2 インフラ設計
 
-Observation Archive と Canonical Store の storage 基盤として利用する R2 resource を扱います。
+本ディレクトリでは、Observation Archive（生ログ証跡）および Canonical Store（Apache Iceberg 分析モデル）の物理ストレージ層として機能する Cloudflare R2 のバケット構成、オブジェクトレイアウト、およびライフサイクルルールを扱います。
 
-## 想定用途
+## バケットトポロジー
 
-Observation Archive の durable object storage を R2 に配置します。
+責務とアクセスパターンの異なる2つのデータ層を、独立した R2 バケットとして分離配置します。
 
-Canonical Store についても R2 上の Iceberg table を利用する方向で検討します。
+| バケット（論理名） | 格納データ | データ形式 | アクセスパターン |
+| :--- | :--- | :--- | :--- |
+| **`ojiverse-dwh-observations`** | 観測事実の生ログ証跡（Source of Evidence） | NDJSON (gzip圧縮) または Parquet | 追記専用（Write-Heavy）、リプレイ時のバルクスキャン |
+| **`ojiverse-dwh-canonical`** | Apache Iceberg テーブル（正規化データモデル） | Parquet データファイル + Iceberg メタデータ JSON/AVRO | 分析クエリ（Read-Heavy）、マテリアライズ時のスナップショットコミット |
 
-## 設計時に確定する事項
+## オブジェクトレイアウト設計（プレフィックス階層）
 
-- Bucket topology
-- Environment 分離
-- Object layout
-- Lifecycle rule
-- Batching による object size
-- Deletion workflow
-- Binding
-- Operation quota
-- Storage capacity
+### Observation Archive バケット
+クエリおよびリプレイ時のスキャン範囲を効率的に絞り込めるよう、以下の階層構造を採用します。
 
-Observation の意味や Canonical schema は Domain Design に置きます。
+* 構造: `observations/v1/source={gateway|backfill}/guild_id={guild_id}/year={YYYY}/month={MM}/day={DD}/{batch_id}.ndjson.gz`
+* 特徴: 日付と取得元（Source）によるパーティショニングにより、特定期間のリプレイや特定ギルドの監査を高速化します。
+
+### Canonical Store バケット
+Apache Iceberg の標準仕様に準拠したテーブルレイアウトを採用します。
+
+* 構造: `tables/{table_name}/data/...` および `tables/{table_name}/metadata/...`
+* 特徴: R2 Data Catalog から参照されるメタデータツリーと実データファイルを同居させます。
+
+## コスト最適化とライフサイクル管理
+
+* **Class A 操作（PUT）の抑制**: Ingestion Queue のバッチ集約により、個々のオブジェクトサイズを 1MB〜10MB 程度にまとめ、不要な書き込み操作回数を削減します。
+* **ライフサイクルルール**: 
+  * Observation Archive は長期保存（5〜10年）を前提とし、自動削除（Expiry）は適用しません。
+  * 古い Iceberg スナップショットのメタデータや孤立ファイル（Orphan Files）は、定期的なメンテナンスジョブによって削除し、容量肥大化を防止します。

@@ -1,33 +1,31 @@
-# データライフサイクルドメイン
+# データライフサイクルドメイン（Lifecycle）
 
-Discord DWH を5〜10年運用する前提で、データの保持、削除、再構築などの lifecycle を扱います。
+本ディレクトリでは、Discord DWH を 5〜10 年という長期スパンで安定稼働させる前提において、データの保持期間（Retention）、Discord プラットフォームの利用規約に基づく削除要求への対応、およびデータ再構築のライフサイクルを扱います。
 
-## 対象
+## 保持方針と削除の不変条件
 
-- Observation の retention
-- Canonical Data の retention
-- Discord 上の削除との関係
-- 削除要求への対応
-- Canonical rebuild
-- Schema migration 時の lifecycle
+### 「追記専用（Append-only）」と「恒久保持」の違い
+本システムにおいて「追記専用（Append-only）」であることは、「いかなるデータも永久に物理削除しない」ことを意味しません。
+日常的な取り込みやクエリ処理においてはイミュータブル（不変）として振る舞いながらも、**プラットフォーム規約（Discord Developer Terms）の遵守やプライバシー保護（Right to be Forgotten）の要請がある場合には、対象データを特定して確実に削除・抹消できる能力**を備えなければなりません。
 
-## 基本原則
+### 削除追跡性（Deletion Provenance）
+Discord 上でユーザーがメッセージを削除した場合、あるいはギルド管理者から特定データの抹消要求が届いた場合、Canonical Store 上で非表示（Tombstone 化）にするだけでなく、**元となった Observation Archive 側の生データまで来歴（Provenance）を遡って特定できる構造**を維持します。これにより、必要に応じてストレージ上の物理コンパクションや暗号化消去を実施可能とします。
 
-「append-oriented」と「永久に削除しない」は同義ではありません。
+## 長期運用における不変の価値
 
-通常の ingestion では既存 Observation を更新しないことを基本としつつ、削除要件や規約上の要求がある場合に対象データを追跡して削除できる必要があります。
+クラウドベンダーの提供サービス、Worker ランタイム、ストレージ API、あるいはフレームワークは、5〜10 年の歳月の中で確実にバージョンアップされ、時には廃止（Deprecation）されます。
+特定の実行基盤やランタイムが同一の形で存続することを前提にしてはなりません。
 
-Canonical Data が削除対象となった場合、対応する Observation まで provenance を辿れる状態を維持します。
+将来にわたって変わらず生き残り続けるべきものは、以下の2つだけです。
 
-## 長期運用
+1. **Discord DWH としての概念定義とドメインモデル**（データの意味論）
+2. **再構築を可能にする Observation Archive**（生の事実証跡としてのデータそのもの）
 
-すべての runtime や infrastructure が5〜10年間同じ形で存在することは前提にしません。
-
-長寿命であるべきものは、Discord DWH としての意味と、再構築に必要な source evidence です。
+これらがプラットフォーム固有の実装から独立して保たれている限り、背後の基盤インフラがどのような進化を遂げても、DWH としての価値を継続させることができます。
 
 ## 今後分割する詳細設計
 
-- Retention
-- Deletion
-- Long-term Migration
-- Rebuild Lifecycle
+* **Retention Policy**: Observation Archive および Canonical Store の保存期間とアーカイブ階層化
+* **Deletion & Compliance**: Discord の削除イベント追跡、利用規約準拠のデータ抹消ワークフロー
+* **Long-term Migration**: 世代交代に伴うストレージ移行やエンベロープ形式のバージョン管理
+* **Rebuild Lifecycle**: 大規模再構築時における旧テーブルの縮退と新テーブルへの切り替え手順

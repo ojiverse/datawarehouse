@@ -1,24 +1,21 @@
-# Cloudflare Pipelines
+# Cloudflare Pipelines インフラ設計
 
-Observation から Canonical Store への processing で Cloudflare Pipelines を利用する場合の resource 設計を扱います。
+本ディレクトリでは、Observation Archive（R2）に届いた生データを Canonical Store（Iceberg）へストリーミング変換・ロードする手段として Cloudflare Pipelines を採用する場合の構成、評価基準、およびフォールバック設計を扱います。
 
-## 現在の位置付け
+## Pipelines の位置づけと評価方針
 
-Pipelines は Canonical materialization の候補です。
+Cloudflare Pipelines は、サーバーレスなストリーム取り込みとデータウェアハウスへのデータ配送を簡素化するマネージドサービスです。
 
-Observation Archive の durability 自体を Pipelines に依存させない方針です。
+* **候補技術としての評価**: 生の Observation ストリームを Iceberg テーブルへ直接 sink（書き込み）できるか、また変換処理（JavaScript/SQL Transform）の自由度が十分かを評価します。
+* **非依存の原則（疎結合の維持）**: 
+  * Observation Archive への高耐久な生ログ書き込み自体は、Pipelines の稼働状況に一切依存させません。
+  * システム全体として、Pipelines を利用せず「Worker + Queue」の組み合わせだけでも Canonical Store のマテリアライズが完全に成立する構造を担保します。
 
-Pipelines を採用しなくても Domain Design が成立する状態を維持します。
+## インフラ設計時に確定すべき事項
 
-## 設計時に確定する事項
-
-- Pipeline topology
-- Source
-- Transform
-- Sink
-- Environment 分離
-- Failure handling
-- Quota
-- Cost
-
-採用可否は processing の詳細 Architecture Design と合わせて判断します。
+* **パイプライン構成（Source / Transform / Sink）**:
+  * **Source**: Cloudflare Queues または R2 Event Notifications
+  * **Transform**: JSON ペイロードの抽出、Discord Snowflake ID からのタイムスタンプ変換、正規化
+  * **Sink**: R2 Data Catalog 経由の Iceberg テーブル
+* **エラーハンドリング**: パースエラーや型不整合メッセージが発生した際の Dead Letter Sink（隔離ストレージ）への退避ルート。
+* **コストとクォータ**: データ転送量および変換処理量に基づく利用料金と、Workers ベースで自作した場合のランニングコストの比較検証。

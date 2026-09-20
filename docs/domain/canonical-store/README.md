@@ -1,43 +1,45 @@
-# Canonical Store ドメイン設計
+# 正規化データドメイン（Canonical Store）
 
-Discord から得た Observation を、長期的に分析可能な一貫したデータモデルへ変換した Canonical Data を扱います。
+本ディレクトリでは、Discord から収集した Observation（生の観測事実）を、長期間にわたって安定して検索・集計・分析できる形式へと体系化した「Canonical Data」の意味論と設計原則を扱います。
 
-## 役割
+## Canonical Store の役割と責務
 
-Canonical Store は Observation Archive の代替ではありません。
+Canonical Store は、Observation Archive を置き換えるものではありません。両者は明確に役割を分担しています。
 
-Observation Archive が「何を観測したか」を保持するのに対し、Canonical Store は「観測結果を Discord DWH としてどう解釈するか」を表現します。
+* **Observation Archive**: Discord から「何が観測されたか」を一切の解釈を挟まずに保存する生ログ。
+* **Canonical Store**: 観測事実を読み解き、「Discord DWH としてどう整合的に解釈・正規化するか」を構造化した分析用データモデル。
 
-Canonical Store は Observation Archive から再構築可能であることを原則とします。
+最も重要な原則として、**Canonical Store は Observation Archive からいつでも完全に再構築（Rebuild）可能であること**を前提とします。Canonical Store 側のデータ破損や変換ロジックのバグ、あるいは大規模なスキーマ変更が発生した場合でも、生データから何度でも再計算・復元できる状態を保証します。
 
-## 初期対象
+## 対象エンティティのスコープ
 
-初期段階では特に次の Discord entity を中心に設計します。
+長期的な運用を見据え、初期フェーズでは Discord の中核となる以下のエンティティに絞ってモデルを策定します。
 
-- Message
-- Channel
-- Thread
+| エンティティ | 扱う関心事とデータ特性 |
+| :--- | :--- |
+| **Message** | 投稿内容、編集履歴、削除の追跡、添付ファイルや埋め込みのメタデータ |
+| **Channel** | テキスト/ボイスチャンネルの作成、設定変更、トピック遷移、親カテゴリとの関係 |
+| **Thread** | スレッドの作成、アーカイブ/アンアーカイブ状態、親チャンネルとの親子構造 |
 
-Reaction、Member、Role などは必要性が確認された時点で追加します。
+※ Reaction、Member、Role、Voice State などの拡張エンティティは、初期の基本パイプラインが安定し、具体的な分析ユースケースが確定した段階で順次モデルに追加します。
 
-## 履歴と Current State
+## 履歴管理と最新状態（Current State）の導出
 
-Canonical Data は append-oriented な observation history を基本とします。
+Canonical Store は、単一のミュータブルなデータベース行（上書き更新）を最終形とはしません。
 
-Current State を唯一の保存形式とはしません。
+Message の編集や削除、HTTP スナップショットなど、同一エンティティに対して発生した複数の観測結果を時系列ログとして保持し、**クエリ時点や指定した過去時点における最新状態を「プロジェクション（投影）」として導出する設計**を採用します。
+これにより、データの更新損失（Update anomaly）を防ぐとともに、「ある時点での会話の流れ」を再現できるタイムトラベル分析を可能にします。
 
-Message の編集や削除、HTTP snapshot など複数の観測から、必要な時点の状態を projection として求められる設計を目指します。
+## 5〜10年運用を見据えたスキーマ進化
 
-## スキーマ進化
+5〜10年に及ぶ運用期間中、Discord API 側の仕様追加や、DWH として蓄積・集計したい項目（Canonical スキーマ）の拡張は必然的に発生します。
 
-5〜10年の運用を想定し、Discord API の変化と Canonical schema の変化を前提とします。
-
-Canonical schema の変更で過去データを再処理する必要が生じた場合、Observation Archive から再構築できることを重視します。
+システムはスキーマ変更を「例外的なトラブル」ではなく「定常的なライフサイクル」として捉え、古い形式のデータと新しい形式のデータを安全に共存させるか、あるいは過去の全 Observation を新しい変換ルールでリプレイして Canonical Store を一新できる運用能力を中核機能として備えます。
 
 ## 今後分割する詳細設計
 
-- Canonical Data Model
-- Message Model
-- Channel and Thread Model
-- Historical State
-- Schema Evolution
+* **Canonical Data Model**: Message, Channel, Thread の正規化スキーマ定義
+* **Message Model**: 本文、メンション、アタッチメント、編集/削除状態の表現規則
+* **Channel & Thread Model**: チャンネル種別とスレッド階層構造の正規化
+* **Historical State & Projection**: 履歴観測から最新状態を導出するプロジェクション規則
+* **Schema Evolution**: 後方互換性を維持したカラム追加・型移行の運用モデル

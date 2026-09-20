@@ -1,38 +1,37 @@
-# Backfill ドメイン設計
+# バックフィルドメイン（Backfill）
 
-Discord HTTP API を利用して Observation を取得し、Gateway だけでは得られない既存データや欠損を補う仕組みを扱います。
+本ディレクトリでは、Discord HTTP API を利用して過去データや欠損区間の Observation を取得し、Gateway のリアルタイム受信だけでは満たせないデータの網羅性と整合性を補完するドメイン設計を扱います。
 
-## 用途
+## Backfill の多面的な役割
 
-Backfill の実装は、可能な限り次の用途で共通化します。
+Backfill の取得エンジンは、単一の目的に特化させるのではなく、以下の多様なユースケースにおいて共通のコアロジックとして機能するよう設計します。
 
-- 初回導入時の既存ログ取得
-- Gateway Resume が成立しなかった区間の回復
-- Gateway や collector の不具合による欠損修復
-- 定期的な reconciliation
-- 手動 repair
+* **初期データロード（Cold Start）**: DWH の初回セットアップ時に、サーバー（ギルド）内の過去メッセージ履歴を一括取得する。
+* **Gateway 切断区間の回復（Gap Fill）**: Gateway のセッション切れ（Invalid Session）により Resume が失敗した際、切断から再接続までの未取得区間を補完する。
+* **インシデント復旧（Repair）**: バグや一時的なストレージ障害によって失われたデータ区間を手動または自動で再取得する。
+* **定常的な整合性維持（Reconciliation）**: 定期的に直近の一定範囲を再取得し、Gateway で見逃していた潜在的な欠損を検知・自己修復する。
 
-## 基本原則
+## 基本原則とデータ完全性の限界
 
-Backfill は Gateway event history を復元するものではありません。
+### Gateway 履歴と HTTP スナップショットの違い
+HTTP Backfill は、過去にリアルタイムで発生した「すべてのイベント履歴」を完全にタイムマシン復元するものではありません。
+HTTP API から取得できるのは、あくまで**リクエスト時点で Discord 上に残存している最新の状態（State）**です。
 
-HTTP API から取得できるのは、原則として取得時点で Discord 上に残っている state です。
+たとえば、Gateway 停止中に「投稿されたが、Backfill 実行前に削除されたメッセージ」や、「複数回編集されたメッセージの途中経過」を HTTP API から知ることは不可能です。
+そのため、本システムでは Gateway 由来データと Backfill 由来データで保証できる完全性（Completeness Guarantee）が異なることを前提とし、Backfill データを架空のイベント履歴として扱わない原則を徹底します。
 
-Gateway 障害中に作成され、その後削除された Message や、複数回編集された Message の中間状態などは完全には復元できません。
+## アンチエントロピー機構（Anti-Entropy）
 
-そのため、Gateway ingestion と HTTP Backfill では completeness guarantee を区別します。
+分散データ基盤において、リアルタイムのストリーム取り込み（Gateway）だけに依存していると、サイレントなパケットドロップや一時的な処理落ちによって、気付かないうちにわずかなデータ欠損（エントロピーの増大）が蓄積していきます。
 
-## アンチエントロピー
-
-HTTP API は Gateway の単なる非常用経路ではなく、Canonical completeness を継続的に確認する anti-entropy mechanism として扱います。
-
-定期的に最近の一定範囲を再取得し、見逃していた欠損を eventual に発見できる設計を目指します。
+本システムでは、HTTP API を「Gateway の単なる非常用バックアップ」にとどめず、データの完全性を能動的に保証する**アンチエントロピー機構**として位置づけます。
+定期的に直近（例: 過去数時間〜数日）のチャンネル履歴を HTTP 経由でバックグラウンド巡回し、Observation Archive と照合することで、見逃されていたイベントを結果整合（Eventual Consistency）の形で確実に回収します。
 
 ## 今後分割する詳細設計
 
-- Message History Crawling
-- Thread Discovery
-- Gap Recovery
-- Periodic Reconciliation
-- Pagination and Progress Semantics
-- Discord Rate Limit Semantics
+* **Message History Crawling**: ページネーション（`before` / `after`）を用いたチャンネル巡回アルゴリズム
+* **Thread Discovery**: アーカイブ済みスレッドや新規スレッドの探索・検出ロジック
+* **Gap Recovery**: Gateway のシーケンス欠落から Backfill 対象の時間範囲（Gap）を特定する規則
+* **Periodic Reconciliation**: 直近履歴を定期スキャンして整合性を確認するスケジューリングモデル
+* **Pagination & Progress Semantics**: クロールの進行カーソルと中断・再開の表現
+* **Discord Rate Limit Semantics**: Discord HTTP API のレート制限（429）への追従と協調モデル

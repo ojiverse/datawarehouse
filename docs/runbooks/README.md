@@ -1,27 +1,25 @@
-# ランブック
+# 運用手順書（ランブック）
 
-このディレクトリには、運用中に実行する具体的な手順を保存します。
+本ディレクトリでは、OJIverse Data Warehouse の運用中にインシデントや定常メンテナンスが発生した際、運用者が実行すべき具体的な確認手順および対処手順を管理します。
 
-## 設計文書との違い
+## 設計文書との役割分担
 
-設計文書は system がどのように振る舞うべきかを説明します。
+* **設計文書**: システムが「どのような前提・規則・構造で振る舞うべきか」という静的なアーキテクチャや不変条件を説明します。
+* **ランブック**: システムが「特定の異常状態や運用イベントに陥った際、運用者が何を観察し、どの順序で操作を行うべきか」という動的なアクションを説明します。
 
-ランブックは、特定の状態になったときに運用者が何を確認し、何を実行するかを説明します。
+※ ランブックでは、迅速な障害復旧を目的として具体的な運用コマンド（Wrangler コマンドや API リクエスト例など）の記載を許容します。ただし、各手順書は段階的開示に従い、1ファイルあたり200行以内を遵守します。
 
-## 初期ランブック候補
+## 定義予定の主要ランブック一覧
 
-安定稼働へ向けて、必要になった時点で次のランブックを追加します。
+安定稼働および運用テストに向けて、以下のシナリオに応じたランブックを順次整備します。
 
-- Gateway disconnected
-- Resume failed
-- Observation ingestion stopped
-- Manual Backfill
-- Periodic Reconciliation failure
-- Canonical processing lag
-- Replay Observations
-- Rebuild Canonical Store
-- Discord API rate limit incident
-
-ランブックもディレクトリごとに README.md を持ち、各文書は 200 行以内とします。
-
-実際の操作コマンドや設定例が必要になる場合、設計文書の制約とは分離して管理方法を決定します。
+| カテゴリ | ランブック名 | 発動条件と主な対処内容 |
+| :--- | :--- | :--- |
+| **Gateway 障害** | `gateway-disconnected` | WebSocket 切断が長期化した場合のセッション状態確認と手動再接続 |
+| | `resume-failed` | Resume（セッション再開）が拒絶された際の新規セッション確立と Backfill 起動 |
+| **データ取り込み異常** | `observation-ingestion-stopped` | R2 への Observation 書き込みが滞留または失敗した際の原因調査と再開 |
+| | `discord-rate-limit-incident` | Discord HTTP API の Rate Limit（429）超過時のバックオフ制御と進行管理 |
+| **データ整合性・復旧** | `manual-backfill` | 特定チャンネルや過去特定期間を指定して手動でデータ取得を実行する手順 |
+| | `reconciliation-failure` | 定期アンチエントロピー照合が異常終了した際の未照合区間の手動再スキャン |
+| **再処理・再構築** | `replay-observations` | バグ修正後のパイプラインを通じた過去 Observation の再処理手順 |
+| | `rebuild-canonical-store` | スキーマ刷新やデータ破損に伴い、全 Observation から Canonical Store を全再構築する手順 |

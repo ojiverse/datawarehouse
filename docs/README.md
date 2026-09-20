@@ -1,137 +1,77 @@
-# 設計文書
+# 設計文書体系
 
-このディレクトリは OJIverse Data Warehouse の設計文書の入口です。
+このディレクトリは、OJIverse Data Warehouse の設計文書群の総合エントリポイントです。
 
-## 文書体系
+本プロジェクトでは、Discord DWH としての概念定義から具体的な Cloudflare リソースの構成までを段階的に開示（Progressive Disclosure）し、将来のプラットフォーム移行や長期運用に耐えうる文書構造を採用しています。
 
-設計は、Discord DWH としての意味から具体的な Cloudflare リソースまでを段階的に開示します。
+## 文書体系と関心事の分離
 
-```mermaid
-flowchart TD
-    R[docs/README.md]
-    D[ドメイン設計]
-    A[アーキテクチャ設計]
-    I[インフラストラクチャ設計]
-    ADR[ADR]
-    RB[ランブック]
-
-    R --> D
-    R --> A
-    R --> I
-    R --> ADR
-    R --> RB
-
-    D --> A
-    A --> I
-```
-
-### ドメイン設計
-
-[domain/README.md](domain/README.md) を入口とします。
-
-Discord 向け DWH として、何を観測し、どう解釈し、どのような状態・整合性・復旧・履歴を保証するかを定義します。
-
-Discord の概念や Gateway、HTTP API の仕様はドメイン設計に含めて構いません。
-
-Cloudflare 固有のサービスや実現手段は原則として含めません。ただし実際の基盤制約を踏まえてドメイン要件が調整されることは許容します。その場合もベンダー固有の仕組みではなく、DWH が満たすべき制約や保証として表現します。
-
-### アーキテクチャ設計
-
-[architecture/README.md](architecture/README.md) を入口とします。
-
-ドメイン設計を特定のプラットフォームの能力と制約の下でどう成立させるかを定義します。
-
-現在の主要プラットフォームは Cloudflare であり、Cloudflare 固有の設計は [architecture/cloudflare/README.md](architecture/cloudflare/README.md) 以下に配置します。
-
-### インフラストラクチャ設計
-
-[infrastructure/README.md](infrastructure/README.md) を入口とします。
-
-実際に作成・管理するリソース、環境、binding、permission、deployment topology、quota、cost などを扱います。
-
-Cloudflare のインフラストラクチャ設計は [infrastructure/cloudflare/README.md](infrastructure/cloudflare/README.md) 以下に配置します。
-
-### ADR
-
-[adr/README.md](adr/README.md) に設計判断の履歴を記録します。
-
-設計文書は「現在どうなっているか」を説明し、ADR は「なぜその判断をしたか」を説明します。
-
-### ランブック
-
-[runbooks/README.md](runbooks/README.md) に運用手順を配置します。
-
-障害対応、手動 Backfill、再構築など、具体的な操作手順は設計文書から分離します。
-
-## 段階的開示
-
-すべてのディレクトリは必ず README.md を持ちます。
-
-README.md は、そのディレクトリの概要と索引を兼ねます。
-
-読者は次の順序で必要な範囲までだけ読み進められる状態を維持します。
+設計文書は、抽象度と関心事に応じて以下の5つに分類しています。
 
 ```mermaid
 flowchart TD
-    A[プロジェクト概要]
-    B[設計分類の README]
-    C[サブシステムの README]
-    D[関心事ごとの詳細設計]
-    E[必要な場合のみ、さらに細分化した設計]
+    Root[docs/README.md]
+    Domain[ドメイン設計<br>domain/]
+    Arch[アーキテクチャ設計<br>architecture/]
+    Infra[インフラストラクチャ設計<br>infrastructure/]
+    ADR[意思決定記録<br>adr/]
+    Runbooks[運用手順書<br>runbooks/]
 
-    A --> B
-    B --> C
-    C --> D
-    D --> E
+    Root --> Domain
+    Root --> Arch
+    Root --> Infra
+    Root --> ADR
+    Root --> Runbooks
+
+    Domain -.実現方法.-> Arch
+    Arch -.リソース配置.-> Infra
 ```
 
-README.md に詳細設計を詰め込みません。
+| 分類 | 格納ディレクトリ | 主な責務と対象 | クラウド固有情報の扱い |
+| :--- | :--- | :--- | :--- |
+| **ドメイン設計** | [domain/](domain/README.md) | Discord DWH の意味論、エンティティ定義、データ整合性、復旧規則 | **原則禁止**（特定インフラに依存しない不変の要求を記述） |
+| **アーキテクチャ設計** | [architecture/](architecture/README.md) | ドメイン要求を Cloudflare の能力・制約下で実現するコンポーネント構成 | **採用技術の方針のみ**（Worker, Durable Objects, R2 などの責務分担） |
+| **インフラストラクチャ設計** | [infrastructure/](infrastructure/README.md) | 実際のリソース定義、環境分離、バインディング、権限、コスト試算 | **完全許容**（Cloudflare の具体的な設定や制限値を詳細化） |
+| **ADR** | [adr/](adr/README.md) | 設計上の重要な意思決定の背景、比較検討した選択肢、採用理由の履歴 | 設計文書が「現在の姿」を示すのに対し、「なぜそうなったか」を記録 |
+| **ランブック** | [runbooks/](runbooks/README.md) | 障害検知時の確認手順、手動リカバリ、データ再構築などの定型運用手順 | 具体的なトラブルシューティング手順を設計文書から隔離して記述 |
 
-詳細が増えた場合は配下の文書へ分割し、README.md から案内します。
+## 設計分類の判断基準
 
-## 文書形式
-
-設計文書は自然言語と Mermaid のみで記述します。
-
-Markdown の見出し、段落、リスト、表、リンクは自然言語の構造化表現として使用できます。
-
-設計文書にはソースコード、疑似コード、JSON、YAML、TOML、SQL、Shell script、Terraform、Wrangler configuration、API response dump を記載しません。
-
-実装例が必要な場合は source、test、fixture、example など、設計文書とは別の場所に置きます。
-
-## 200 行制限
-
-すべての設計文書は 200 行以内とします。
-
-見出し、空行、Mermaid を含む物理行数を数えます。
-
-200 行を超える設計は文章を圧縮して収めるのではなく、段階的開示に従って関心事を分割します。
-
-200 行を超えたこと自体を、設計の分割粒度が粗すぎるシグナルとして扱います。
-
-## 設計分類の判断
-
-新しい設計上の関心事は、次の観点で配置先を決定します。
+新しい関心事や要件を追加する際は、以下のフローに従って適切なディレクトリへ配置します。1つの文書に複数分類の内容が混ざる場合は、可能な限り文書を分割します。
 
 ```mermaid
 flowchart TD
-    X[新しい設計上の関心事]
-    D{Discord DWH としての意味・状態・保証か}
-    A{特定プラットフォーム上での実現方法か}
-    I{具体的リソースや環境の設計か}
+    Topic[新しい設計上の関心事]
+    IsDomain{Discord DWH としての<br>意味・状態・保証に関する内容か？}
+    IsArch{特定プラットフォーム上での<br>コンポーネント構成や実現方法か？}
+    IsInfra{具体リソース・環境・権限・<br>コストに関する設定か？}
 
-    X --> D
-    D -->|はい| Domain[domain]
-    D -->|いいえ| A
-    A -->|はい| Architecture[architecture / platform]
-    A -->|いいえ| I
-    I -->|はい| Infrastructure[infrastructure / platform]
+    Topic --> IsDomain
+    IsDomain -->|はい| Domain[domain/]
+    IsDomain -->|いいえ| IsArch
+    IsArch -->|はい| Arch[architecture/]
+    IsArch -->|いいえ| IsInfra
+    IsInfra -->|はい| Infra[infrastructure/]
+    IsInfra -->|いいえ| Other[ADR または ランブック]
 ```
 
-一つの文書が複数分類にまたがる場合は、可能な限り別文書へ分離します。
+## 文書作成の基本原則
 
-## 現在の状態
+本プロジェクトの設計文書は、保守性と可読性を長期にわたって維持するため、以下の厳格な規約に従って記述されます。
 
-この文書群は初期設計段階です。
+### 1. 段階的開示（Progressive Disclosure）
+すべてのディレクトリには必ず `README.md` を配置し、概要と配下ドキュメントへの案内（インデックス）を兼ねます。
+読者は「プロジェクト概要 → 各領域の README → サブシステムの README → 関心事ごとの詳細設計」の順に、必要な深度まで迷わず読み進められる構造を維持します。README に過剰な詳細を詰め込まず、詳細化が必要になった段階で子文書へ分割します。
 
-現時点で合意済みの境界と責務を固定し、詳細設計は実装フェーズに合わせて段階的に追加します。
+### 2. 自然言語と Mermaid のみの採用
+設計文書にはソースコード、疑似コード、JSON/YAML、SQL、設定ファイル（Wrangler / Terraform 等）、API レスポンスダンプを一切記載しません。
+実装詳細を含めると、コードの変更に伴って設計書が容易に陳腐化し、設計の本質的な意図が埋もれてしまうためです。コード例や設定サンプルが必要な場合は、リポジトリ内のソースコードやテストフィクスチャに配置します。
+
+### 3. 200行制限による分割の強制
+すべての設計文書は、空行や図表を含めて**最大200行以内**とします。
+200行を超える分量になった場合は、文章を無理に圧縮するのではなく、設計の粒度が粗すぎるシグナルと捉え、段階的開示に従って新しいサブディレクトリや別ファイルへ関心事を分割します。
+
+## 設計ドキュメントの現状
+
+本ドキュメント群は「初期設計（境界と責務の合意）」フェーズにあります。
+現時点では各領域の責務境界と基本方針を固定しており、開発の進行（HTTP Backfill の実装、Gateway の PoC）に合わせて各 README に記載された「今後分割する詳細設計」を順次追加していきます。

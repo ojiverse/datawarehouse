@@ -1,25 +1,26 @@
 # Cloudflare インフラストラクチャ
 
-Discord DWH を運用するために必要な Cloudflare resource と環境構成を扱います。
+本ディレクトリでは、Discord DWH を Cloudflare 上で安全かつ経済的に稼働させるために必要な、具体的なリソース構成、環境設計、セキュリティ、およびコスト管理を扱います。
 
-## サブシステム
+## サブシステム構成
 
-- [environments/README.md](environments/README.md): development、beta、production
-- [workers/README.md](workers/README.md): Worker resource と責務
-- [durable-objects/README.md](durable-objects/README.md): Durable Object namespace と instance topology
-- [queues/README.md](queues/README.md): Queue topology
-- [r2/README.md](r2/README.md): R2 bucket と lifecycle
-- [data-catalog/README.md](data-catalog/README.md): R2 Data Catalog
-- [pipelines/README.md](pipelines/README.md): Cloudflare Pipelines
-- [security/README.md](security/README.md): Secret、permission、credential
-- [observability/README.md](observability/README.md): Log、metric、alert
-- [deployment/README.md](deployment/README.md): Deployment と migration
-- [cost/README.md](cost/README.md): Plan、quota、capacity、cost
+関心事に応じて、以下のサブシステムに分割してインフラストラクチャを設計しています。
 
-## 現在の方針
+| カテゴリ | サブシステム | 主な設計対象 |
+| :--- | :--- | :--- |
+| **環境と配置** | [environments/](environments/README.md) | 開発（dev）、検証（beta）、本番（prod）の環境分離ポリシー |
+| | [deployment/](deployment/README.md) | Wrangler / CI/CD によるデプロイ、マイグレーション、ロールバック |
+| **コンピュート** | [workers/](workers/README.md) | Worker の責務分割、CPU/メモリ制限、およびルーティング設定 |
+| | [durable-objects/](durable-objects/README.md) | Gateway セッションを常時維持する Durable Objects の名前空間と設定 |
+| **データ基盤** | [queues/](queues/README.md) | イベント中継・バッチ集約・Backfill 進行を行うキューのトポロジー |
+| | [r2/](r2/README.md) | 生ログ（Observation）および分析テーブルを保持する R2 バケット設計 |
+| | [data-catalog/](data-catalog/README.md) | Apache Iceberg テーブルを管理する R2 Data Catalog の設定 |
+| | [pipelines/](pipelines/README.md) | ストリーム変換・ロードを行う Cloudflare Pipelines の構成 |
+| **運用と統制** | [security/](security/README.md) | Discord Bot Token、バインディング権限、およびアクセス制御 |
+| | [observability/](observability/README.md) | Workers ログ、メトリクス収集、トレース、およびアラート設定 |
+| | [cost/](cost/README.md) | プラン選定（Free / Workers Paid）、クォータ制限、およびコスト試算 |
 
-開発とベータでは可能な範囲を Free tier で検証します。
+## プラン選定と移行方針
 
-Gateway を安定して継続運用する本番フェーズでは Workers Paid を利用する方針です。
-
-具体的な resource 数、命名、binding、quota budget は詳細設計で確定します。
+* **開発・ベータ環境**: リソース消費が限定的であるため、可能な限り Cloudflare の Free プラン枠内で検証を進めます。
+* **本番環境**: Gateway の WebSocket 常時接続およびセッション維持を安定して実現するため、**Workers Paid プラン** を採用します。常時稼働する Durable Object 1 インスタンスの継続時間（Duration）が、Workers Paid の含まれる利用枠（Included Usage）内に収まるかをベータ期間の実測値で確認した上で本番へ移行します。

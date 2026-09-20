@@ -36,6 +36,8 @@ Erasure audit record には request metadata と execution result だけを残�
 
 rewrite 後も Observation ID と元の観測 provenance は維持するが、Envelope に compliance erasure が適用済みであることと Erasure Run ID を記録する。
 
+rewrite は対象 object を読み取った時点の ETag を条件に実行する。条件不一致の場合は最新 object を再評価し、古い copy で上書きしない。
+
 削除対象 field / entity は payload から物理的に除去し、元値を tombstone、hash、暗号文として残さない。
 
 対象ユーザーが主体である Message / Member / Reaction 等の entity は entity 単位で除去する。他ユーザーの entity 内に埋め込まれた対象ユーザーの structured reference も除去または非識別化する。

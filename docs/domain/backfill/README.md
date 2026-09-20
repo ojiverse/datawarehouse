@@ -6,32 +6,46 @@
 
 Backfill エンジンは、単一目的に特化させるのではなく、以下のユースケースにおいて共通のコアロジックとして機能するよう設計する。
 
-* **初期データロード（Cold Start）**: DWH 初回セットアップ時における、サーバー（ギルド）内過去メッセージ履歴の一括取得。
-* **Gateway 切断区間の回復（Gap Fill）**: Gateway セッション無効化（Invalid Session）等に伴う未取得区間の補完。
-* **インシデント復旧（Repair）**: 障害等によって欠損した特定データ区間の再取得。
-* **定常的な整合性維持（Reconciliation）**: 直近履歴を定期スキャンし、リアルタイム受信で見逃された潜在的欠損を自己修復。
+* **初期データロード（Cold Start）**: DWH 初回セットアップ時における、サーバー（ギルド）内過去メッセージ履歴の一括取得
+* **Gateway 切断区間の回復（Gap Fill）**: Gateway Session の Resume が成立しなかった区間の補完
+* **インシデント復旧（Repair）**: 障害等によって欠損した特定データ区間の再取得
+* **定常的な整合性維持（Reconciliation）**: 直近履歴を定期スキャンし、リアルタイム受信で見逃された潜在的欠損を自己修復
 
 ## 基本原則とデータ完全性の限界
 
 ### Gateway 履歴と HTTP スナップショットの違い
 HTTP Backfill は、過去にリアルタイムで発生した「すべてのイベント履歴」を復元するものではない。
-HTTP API から取得可能なデータは、**リクエスト時点で Discord 上に残存する最新の状態（State）**に限定される。
 
-例えば、Gateway 停止中に「投稿後に即座に削除されたメッセージ」や「複数回編集されたメッセージの中間状態」を HTTP API から取得することは不可能である。
-したがって、Gateway 由来データと Backfill 由来データで保証可能な完全性（Completeness Guarantee）の差異を前提とし、Backfill データを架空のイベント履歴として扱わない原則を徹底する。
+HTTP API から取得可能なデータは、リクエスト時点で Discord 上に残存する状態に限定される。
+
+例えば、Gateway 停止中に投稿後すぐ削除されたメッセージや、複数回編集されたメッセージの中間状態を HTTP API から取得することはできない。
+
+したがって、Gateway 由来データと Backfill 由来データで保証可能な完全性の差異を前提とし、Backfill データを架空のイベント履歴として扱わない。
+
+## Durable Progress
+
+Backfill は数時間から数日にわたって中断と再開を繰り返す可能性があるため、実行中の一時的な Queue message だけを進行状態の唯一の根拠としてはならない。
+
+各 Backfill run は、少なくとも対象範囲、現在の取得位置、完了状態を復元可能な durable progress を持たなければならない。
+
+Worker、Queue consumer、実行基盤が停止しても、durable progress から未完了 run を再開できることを不変条件とする。
+
+進行状態をどの storage mechanism へ保存するかは Architecture Design で決定する。
 
 ## アンチエントロピー機構（Anti-Entropy）
 
-分散データ基盤において、リアルタイムストリーム取り込み（Gateway）のみに依存した場合、潜在的なパケットドロップや一時的処理落ちによるデータ欠損（エントロピーの増大）が不可避である。
+HTTP API は Gateway の単なる非常用バックアップではなく、データの完全性を能動的に維持するアンチエントロピー機構として位置づける。
 
-本システムでは、HTTP API を単なる非常用バックアップではなく、データの完全性を能動的に保証する**アンチエントロピー機構**として位置づける。
-定期的に直近（例: 過去数時間〜数日）のチャンネル履歴を HTTP 経由でバックグラウンド巡回し、Observation Archive と照合することで、見逃されたイベントを結果整合（Eventual Consistency）により確実に回収する。
+定期的に直近のチャンネル履歴を HTTP 経由で巡回し、Observation Archive と照合することで、見逃された情報を結果整合により回収する。
+
+定期照合は長期間の Cold Start や過去データ取得の durable progress の代替にはならない。
 
 ## 分割予定の詳細設計
 
-* **Message History Crawling**: ページネーション（`before` / `after`）を用いたチャンネル巡回アルゴリズム
+* **Message History Crawling**: ページネーションを用いたチャンネル巡回アルゴリズム
 * **Thread Discovery**: アーカイブ済みスレッドおよび新規スレッドの探索・検出ロジック
-* **Gap Recovery**: Gateway シーケンス欠落からの Backfill 対象時間範囲（Gap）特定規則
-* **Periodic Reconciliation**: 直近履歴を定期スキャンして整合性を確認するスケジューリングモデル
-* **Pagination & Progress Semantics**: クロール進行カーソルと中断・再開の表現
-* **Discord Rate Limit Semantics**: Discord HTTP API レート制限（429）への追従と協調モデル
+* **Gap Recovery**: Gateway の欠損から Backfill 対象範囲を特定する規則
+* **Periodic Reconciliation**: 直近履歴を定期スキャンして整合性を確認するモデル
+* **Backfill Run Model**: run identity、対象範囲、完了状態の意味論
+* **Pagination & Durable Progress**: クロール進行カーソルと中断・再開の表現
+* **Discord Rate Limit Semantics**: Discord HTTP API の rate limit に追従する協調モデル

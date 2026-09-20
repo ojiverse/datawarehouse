@@ -24,11 +24,11 @@ HTTP API から取得可能なデータは、リクエスト時点で Discord �
 
 ## Durable Progress
 
-Backfill は数時間から数日にわたって中断と再開を繰り返す可能性があるため、実行中の一時的な Queue message だけを進行状態の唯一の根拠としてはならない。
+Backfill は数時間から数日にわたって中断と再開を繰り返す可能性があるため、一時的な execution trigger や process memory だけを進行状態の唯一の根拠としてはならない。
 
 各 Backfill run は、少なくとも対象範囲、現在の取得位置、完了状態を復元可能な durable progress を持たなければならない。
 
-Worker、Queue consumer、実行基盤が停止しても、durable progress から未完了 run を再開できることを不変条件とする。
+実行単位や実行基盤が停止しても、durable progress から未完了 run を再開できることを不変条件とする。
 
 進行状態をどの storage mechanism へ保存するかは Architecture Design で決定する。
 
@@ -36,7 +36,9 @@ Worker、Queue consumer、実行基盤が停止しても、durable progress か�
 
 HTTP API は Gateway の単なる非常用バックアップではなく、データの完全性を能動的に維持するアンチエントロピー機構として位置づける。
 
-定期的に直近のチャンネル履歴を HTTP 経由で巡回し、Observation Archive と照合することで、見逃された情報を結果整合により回収する。
+定期的に直近のチャンネル履歴を HTTP 経由で再観測し、取得結果を新しい Observation として無条件に追記する。取り込み前に Observation Archive や Canonical Store と比較して保存要否を決めない。
+
+重複は後続の deterministic projection で収束させ、Reconciliation の correctness を Canonical Store の正しさに依存させない。
 
 定期照合は長期間の Cold Start や過去データ取得の durable progress の代替にはならない。
 

@@ -31,6 +31,16 @@
 
 `sequence` は Discord が Gateway Session ごとに発行する順序情報であり、複数 Session 間で共通のイベント識別子または全体順序として扱わない。
 
+## 収集対象の Product Policy
+
+Gateway で観測可能だからという理由だけで、すべての transient telemetry を収集することはしない。
+
+DWH-public scope に属する durable community activity は原則として Observation Archive へ保存し、現在の Canonical model や Bot / AI Agent が利用しないことだけを理由に drop しない。
+
+Presence、Typing、Voice State は transient behavioral telemetry として Deliberate Absence に指定し、収集対象から除外する。
+
+具体的な Gateway Intent、event filter、DWH-public の指定方法は、この Product Policy を満たす範囲で Architecture が決定する。
+
 ## Gateway 取り込みの基本原則
 
 ### 1. 切断と接続断の通常事象化

@@ -58,8 +58,11 @@ Cloudflare 外の Gateway Instance は authenticated ingest Worker へ Observati
 
 ingest Worker は Envelope validation と R2 commit を完了してから成功応答を返す。外部 producer はこの成功応答を Durable Acceptance とみなす。
 
+## 詳細設計
+
+* [identify-coordination.md](identify-coordination.md): application-wide Identify budget と max_concurrency の fleet coordination
+
 ## 今後分割する詳細設計
 
 * **Gateway Runtime Verification**: #18 の長時間 connection test
-* **Identify Budget Coordination**: application-wide Session Start Limit
 * **External Ingest Authentication**: non-Cloudflare producer の認証

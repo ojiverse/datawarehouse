@@ -52,7 +52,9 @@ Archive write は conditional create-only put とし、既存 key を overwrite 
 
 不一致は invariant violation として失敗させる。
 
-R2 の strong consistency を前提に、put 成功後は Archive commit 済みとして扱う。
+通常 ingestion からの overwrite は禁止する。explicit erasure workflow だけは例外として、current ETag を条件に既存 object を compliance rewrite または delete できる。
+
+R2 の strong consistency を前提に、put / compliance rewrite / delete の成功後は最新状態が即座に可視であるものとして扱う。
 
 ## Canonical Store
 

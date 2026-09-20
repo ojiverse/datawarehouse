@@ -23,4 +23,4 @@
 ## プラン選定と移行方針
 
 * **開発・ベータ環境**: リソース消費が限定的であるため、可能な限り Cloudflare の Free プラン枠内で検証を進めます。
-* **本番環境**: Gateway の WebSocket 常時接続およびセッション維持を安定して実現するため、**Workers Paid プラン** を採用します。常時稼働する Durable Object 1 インスタンスの継続時間（Duration）が、Workers Paid の含まれる利用枠（Included Usage）内に収まるかをベータ期間の実測値で確認した上で本番へ移行します。
+* **本番環境**: Gateway の WebSocket 常時接続およびセッション維持を安定して実現するため、**Workers Paid プラン** を採用します。常時稼働する Durable Object 1 インスタンスの継続時間（Duration）が、Workers Paid に含まれる利用枠（Included Usage）内に収まるかをベータ期間の実測値で確認した上で本番へ移行します。

@@ -5,7 +5,7 @@
 ## 原則一覧
 
 * [現在の確実性のレベルで設計する (Design at the Current Level of Certainty)](design-at-current-certainty.md)  
-  すでに確定している既知の事実には厳格であり、未知の事柄には寛容であれ。早すぎる解釈より情報の保存（来歴）を優先し、未知の将来要件のための余白を意図して残す。
+  すでに確定している既知の事実には厳格であり、未知の事柄には寛容であること。早すぎる解釈より情報の保存（来歴）を優先し、未知の将来要件のための余白を意図して残す。
 * [要件と不変条件 (Requirements and Invariants)](requirements-and-invariants.md)  
   機能要件・非機能要件を、システムが常に保護すべき「不変条件」へと翻訳して設計を開始する。
 * [唯一の事実源 (Single Source of Truth)](single-source-of-truth.md)  

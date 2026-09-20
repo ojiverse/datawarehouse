@@ -1,8 +1,8 @@
-# Cloudflare Observation Architecture
+# Cloudflare Observation アーキテクチャ
 
-Domain 上の Observation を Cloudflare 上で durable に保存する write path を扱います。
+ドメイン上の Observation を Cloudflare 上で durable に保存する write path を扱います。
 
-## Scope
+## 対象
 
 - Observation の受理から durable storage までの境界
 - Buffering と batching
@@ -19,9 +19,9 @@ Observation Archive は Canonical Store より先に durable になることを�
 
 大量の小さな object を無条件に生成せず、運用コストと failure semantics を踏まえた batching を検討します。
 
-## Non-scope
+## 対象外
 
-Bucket 名、lifecycle rule、binding、region policy などの resource configuration は Infrastructure Design で扱います。
+Bucket 名、lifecycle rule、binding、region policy などの resource configuration はインフラストラクチャ設計で扱います。
 
 ## 今後分割する詳細設計
 

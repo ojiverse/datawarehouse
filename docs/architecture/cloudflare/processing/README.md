@@ -1,8 +1,8 @@
-# Cloudflare Processing Architecture
+# Cloudflare 処理アーキテクチャ
 
 Observation から Canonical Data を生成する processing を Cloudflare 上でどう実行するかを扱います。
 
-## Scope
+## 対象
 
 - Normalization の execution model
 - Batch と streaming の境界

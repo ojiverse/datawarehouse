@@ -20,6 +20,18 @@ Query / API のアクセス境界では「現在の OJIverse メンバー、ま�
 
 具体的な identity provider、Bot / Application とユーザーの紐付け方式、membership 検証方式は Architecture で決定する。
 
+## 保存データの暗号化
+
+R2 と Durable Objects が提供する標準の encryption at rest を baseline とする。
+
+R2 は object body と metadata を自動的に AES-256 で暗号化するため、first-MVP では SSE-C 等の application-managed encryption key を必須にしない。
+
+Durable Object storage も Cloudflare により at-rest encryption される。
+
+通信は TLS を使用し、Observation / Canonical bucket を public bucket として公開しない。
+
+Product Policy 上の deletion requirement を妨げるため、Observation Archive に indefinite Bucket Lock を設定しない。
+
 ## 管理対象のクレデンシャルと保管方法
 
 | 秘匿情報 | 用途 | 保管・注入方法 | アクセスするコンポーネント |

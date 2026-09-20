@@ -9,7 +9,9 @@
 
 当初は、1つの Discord shard に対して本システム側の Gateway Session も1つだけ存在する前提で設計していた。
 
-しかし Discord Gateway では、同じ shard assignment を持つ独立した複数 Session を同時に確立できる。
+この前提は Discord 公式仕様と一致していなかった。Discord Gateway は同じ shard assignment を持つ独立した複数 Session の確立を明示的に許容している。
+
+また ADR-0006 に記載した固定的な heartbeat interval も protocol invariant ではない。heartbeat interval は各 Session の Hello payload から与えられる値に従う。
 
 また本システムでは、将来的に Cloudflare だけでなく Raspberry Pi 等の別実行環境へ Gateway collector を配置する可能性がある。
 

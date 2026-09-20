@@ -8,6 +8,18 @@
 2. **最小特権の原則（Least Privilege）**: 各 Worker およびコンポーネントには、その責務遂行に不可欠な最小限のバインディング（読み取り専用権限、特定キューへの投入権限等）のみを付与する。
 3. **環境ごとの認証情報分離**: Development、Beta、Production の各環境で個別の Discord Bot Token および Cloudflare API クレデンシャルを発行し、漏洩時の影響半径（Blast Radius）を局所化する。
 
+## DWH 利用者の認可境界
+
+認可の Product Policy は [domain/product-policy/](../../../domain/product-policy/README.md) を基準とする。
+
+DWH は community-wide corpus であり、Discord の Role、Channel Permission、Permission Override を record ごとに再現しない。
+
+Query / API のアクセス境界では「現在の OJIverse メンバー、またはそのメンバーに紐づく Bot / Application として DWH 全体を利用できる主体か」を判定する。
+
+一度 admission された主体に対し、Message / Channel 単位で異なる corpus を返す設計は採用しない。人間と Bot / Application でも取得可能な corpus を区別しない。
+
+具体的な identity provider、Bot / Application とユーザーの紐付け方式、membership 検証方式は Architecture で決定する。
+
 ## 管理対象のクレデンシャルと保管方法
 
 | 秘匿情報 | 用途 | 保管・注入方法 | アクセスするコンポーネント |

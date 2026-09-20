@@ -21,4 +21,5 @@
 | [0003](0003-avoid-relational-db-in-core-dwh.md) | **コア DWH における RDB 排除** | 書き込み限界とコストを回避するため、D1 等のリレーショナル DB をデータパスから排除 | 承認（Accepted） |
 | [0004](0004-http-backfill-as-anti-entropy.md) | **Backfill の定常アンチエントロピー化** | 単なる初期移行ツールではなく、リアルタイム欠損を定常修復する中核機構として位置づけ | 承認（Accepted） |
 | [0005](0005-cloudflare-as-primary-platform.md) | **主要基盤としての Cloudflare 採用** | 低コスト運用、R2 の転送量無料、Durable Objects の WebSocket 統合性を評価 | 承認（Accepted） |
-| [0006](0006-durable-objects-for-gateway-session.md) | **Gateway 管理への Durable Objects 採用** | 単一シャード常時接続と Resume 状態の排他的維持を、サーバーレス環境で最小コストで実現 | 承認（Accepted） |
+| [0006](0006-durable-objects-for-gateway-session.md) | **Gateway 管理への Durable Objects 採用** | Cloudflare 上の Gateway Session の所有と Resume 状態管理に Durable Objects を採用 | 一部置換（ADR-0007） |
+| [0007](0007-multiple-gateway-instances.md) | **複数 Gateway Instance の並行稼働** | 同一 shard を複数の独立 Session が観測できる observer fleet として Gateway をモデル化 | 承認（Accepted） |

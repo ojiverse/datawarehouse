@@ -21,7 +21,8 @@ Observation Archive の標準 write path は direct-to-R2 とする。
 * R2 commit 成功を Cloudflare architecture 上の Durable Acceptance とする
 * 1 Observation を1 R2 object とする
 * Archive object は UTF-8 JSON を gzip 圧縮する
-* Archive write は conditional create-only とし overwrite しない
+* 通常 ingestion の Archive write は conditional create-only とし overwrite しない
+* Product Policy に基づく explicit erasure だけは compliance rewrite / delete の例外とする
 * Observation ID は UUIDv7 とし object key から独立させる
 * R2 key は Source Kind と Observed At の UTC 時間軸で partition する
 

@@ -4,12 +4,26 @@
 
 ## 保持方針と削除の不変条件
 
-### 「追記専用（Append-only）」と「恒久保持」の峻別
+保持・削除の Product Policy は [product-policy/](../product-policy/README.md) を基準とする。
+
+### 原則無期限の保持
+DWH-public として取得した API Data は、stated functionality のために必要であり削除義務が発生していない限り、期限を設けず保持する。
+
+ここでの無期限保持は「いかなる理由でも永久に削除しない」という意味ではない。Product Policy、Discord の要求、ユーザー本人からの削除要求、法的義務等による deletion requirement は通常の Retention より優先する。
+
+### 「追記専用（Append-only）」と削除義務の峻別
 本システムにおいて「追記専用（Append-only）」であることは、「いかなるデータも物理削除しない」ことを意味しない。
-日常的な取り込みおよびクエリ処理においては不変（Immutable）として振る舞いながらも、プラットフォーム規約（Discord Developer Terms）遵守やプライバシー保護（Right to be Forgotten）の要請がある場合には、対象データを特定して確実に削除・抹消可能な能力を備えなければならない。
+
+通常の Discord Message 削除は Archive の物理削除 trigger としない。削除を観測できた場合は「過去に存在し、その後削除された」という historical evidence として Observation Archive に保持し、Canonical の best-known Current State に反映する。
+
+一方、ユーザー本人、Discord、法的要請その他によって API Data の削除義務が発生した場合は、対象ユーザーに紐づく全 API Data を削除対象とする。
 
 ### 削除追跡性（Deletion Provenance）
-Discord 上でメッセージが削除された場合、または管理者から特定データの抹消要求を受理した場合、Canonical Store 上で非表示（Tombstone 化）とするのみならず、**元となった Observation Archive 側の生データまで来歴（Provenance）を遡って特定可能な構造**を維持する。これにより、必要に応じてストレージ上の物理コンパクションまたは暗号化消去を実施可能とする。
+Deletion requirement を満たすため、対象ユーザーに紐づく API Data を Observation Archive まで遡って特定できなければならない。
+
+削除対象は Observation Archive と Canonical Store に限らず、Vectorize、全文検索 index、cache、Agent 固有 index 等の Derived Data を含む。
+
+物理 object の書き換え、subject index、暗号化消去等の具体方式は Architecture / Infrastructure で決定する。
 
 ## 長期運用における不変の価値
 

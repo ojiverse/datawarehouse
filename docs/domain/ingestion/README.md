@@ -49,6 +49,17 @@ Gateway 経由で受信可能なデータは「発生したイベントの時系
 
 Gateway の取りこぼしを HTTP Backfill で補完する場合であっても、両者が提供する完全性保証の差異をドメインとして認識し、架空のイベント履歴の合成を禁じる。
 
+### 4. Durable Acceptance と At-least-once 配送
+Gateway で Dispatch を受信しただけでは、Observation Archive への保存を保証したとはみなさない。
+
+プロセス停止や実行環境の喪失後も配送を再試行できる状態へ到達した時点を **Durable Acceptance** と定義する。
+
+Durable Acceptance された Observation は、Observation Archive へ **At-least-once** で配送されなければならない。配送の再試行によって同じ Observation が複数回 Archive へ到達することを正常系として許容する。
+
+Durable Acceptance より前に失われた Gateway event については At-least-once を保証しない。切断時は Resume により event stream の回復を試み、Resume できない場合は HTTP Backfill により Discord 上に残存する状態を回復する。
+
+したがって、At-least-once は Discord から Observation Archive までの end-to-end 保証ではなく、**本システムが Observation を durable に受理した後の配送保証**である。
+
 ## 分割予定の詳細設計
 
 * **Gateway Instance Model**: 観測主体の安定した識別性とライフサイクル
@@ -58,5 +69,5 @@ Gateway の取りこぼしを HTTP Backfill で補完する場合であっても
 * **Heartbeat & Liveness**: ハートビート送信間隔、ACK タイムアウト判定、ゾンビ接続の検知
 * **Resume & Recovery**: Resume 試行、Session 破棄判定、Backfill へのハンドオフ条件
 * **Gateway Event Semantics**: 受理すべき Dispatch イベント種別とペイロードの扱い
-* **Event Delivery Semantics**: 受信からストレージ永続化までの配送保証
+* **Event Delivery Semantics**: Durable Acceptance の境界、Acceptance 後の At-least-once 配送保証、および Acceptance 前の Gateway recovery semantics
 * **Backpressure & Failure Semantics**: 後続ストレージ遅延・障害時におけるバッファリングと流量制御

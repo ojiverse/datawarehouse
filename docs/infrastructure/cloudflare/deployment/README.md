@@ -1,35 +1,47 @@
 # Cloudflare デプロイ・マイグレーション設計
 
-本ディレクトリでは、Cloudflare 上に配置される各 Worker、Durable Objects、キュー、およびストレージリソースを安全かつ再現可能にデプロイ・移行（マイグレーション）・ロールバックするためのインフラ設計を定義する。
+本ディレクトリでは Cloudflare 上の Worker、Durable Objects、R2、Data Catalog 等を安全かつ再現可能にデプロイ・移行・ロールバックする原則を定義する。
 
-## CI/CD と構成管理（IaC）方針
+## CI/CD と構成管理
 
-すべてのリソース構成およびコードのデプロイは、手動操作を排し、Git リポジトリを唯一の正（Source of Truth）とした自動化パイプラインによって実行する。
+リソース構成とコードのデプロイは Git repository を構成の事実源として自動化する。
 
-* **デプロイツール**: Cloudflare 公式の `wrangler` CLI を採用し、環境（`dev` / `beta` / `prod`）ごとの設定を `wrangler.toml`（または環境別設定ファイル）で管理する。
-* **CI/CD パイプライン**: GitHub Actions を利用し、テスト実行、環境別ブランチへのマージ、および自動デプロイを統制する。
+* Cloudflare resource / Worker deployment には Wrangler を使用する
+* dev / beta / prod の configuration と secrets を分離する
+* GitHub Actions 等から test、migration、deployment を再現可能に実行する
 
-## デプロイ時のデータ欠損防止原則（Zero Data Loss）
+## Gateway Deployment
 
-常時接続を維持する Ingestion Worker（Durable Objects）のデプロイにおいては、以下の耐障害機構と連携してデータ欠損を防止する。
+Gateway correctness を graceful shutdown に依存させない。
 
-```mermaid
-flowchart TD
-    Deploy[新バージョンのデプロイ実行] --> Evict[旧 DO インスタンスの終了処理]
-    Evict --> SaveState[セッション情報・直近シーケンスを DO ストレージへフラッシュ]
-    SaveState --> CloseWS[WebSocket の Graceful Close]
-    CloseWS --> SpawnNew[新 DO インスタンスの起動]
-    SpawnNew --> Resume[保存情報を用いた Discord への Resume 試行]
-    
-    Resume -->|成功| Normal[通常取り込みへ復帰（欠損ゼロ）]
-    Resume -->|失敗（セッション破棄時）| Backfill[新規セッション確立 + 欠損区間の Backfill 自動発行]
-```
+Gateway Session の Accepted Sequence は通常の ingestion path で継続的に durable storage へ保存され、R2 Observation Archive へ commit 済みの highest contiguous sequence を表す。
 
-* **安全な終了処理**: 新コード反映に伴い DO インスタンスが再生成される際、最新の `session_id` と `sequence` を確実にストレージへ永続化してから接続を切断する。
-* **Resume と Backfill の多重防御**: デプロイ直後に新インスタンスが Discord へ `Resume` を要求し、未達イベントを回収する。仮にセッションが失効した場合でも、Backfill パイプラインが直ちに起動して未取得区間を補完する。
+deployment により WebSocket が予告なく切断されても、再起動後は保存済み Session state と Accepted Sequence から Resume を試行する。
 
-## インフラ設計における確定事項
+Received Sequence が Accepted Sequence より進んでいた場合は replay duplicate を許容する。
 
-* **ロールバック手順**: デプロイ起因の不具合発生時に、直前の安定バージョンへ安全に切り戻す手順の確立。
-* **Durable Object のマイグレーションタグ**: クラス定義や内部ストレージスキーマを変更する際の Wrangler migration 設定。
-* **Data Catalog / Iceberg スキーマのバージョン管理**: テーブル変更を適用する際のマイグレーションスクリプトの配置と実行パイプラインの整備。
+Resume 不能な場合は新規 Session を確立し、HTTP Backfill / Reconciliation により surviving state を回復する。
+
+したがって deployment は「イベント欠損ゼロ」を保証しない。Archive commit 前に失われた event や Session loss 後に HTTP で復元不能な transient history が存在し得る。
+
+## Durable Object Migration
+
+Durable Object class や SQLite schema を変更する際は Cloudflare の migration mechanism を使用する。
+
+migration 前後で Gateway Accepted Sequence、Backfill progress、HTTP budget state の意味を変えない。
+
+control state の schema migration に失敗した場合に Production data を失わない rollback path を用意する。
+
+## Canonical Deployment
+
+Canonical materializer の version と projection version を明示的に関連付ける。
+
+大規模 schema / projection 変更では既存 table を in-place に破壊せず、新しい Canonical table を Observation Archive から rebuild して validation 後に切り替える。
+
+R2 Data Catalog / Iceberg metadata は rebuildable であり、Observation Archive より高い永続性を要求しない。
+
+## Rollback
+
+application code の rollback が Observation Archive の既存 object を変更してはならない。
+
+Envelope / Product Policy / Domain semantics の backward-incompatible change は単純な code rollback では解決せず、versioned migration または新 ADR を要求する。

@@ -2,36 +2,70 @@
 
 本ディレクトリでは、Discord Gateway との WebSocket 接続を Cloudflare 上で維持し、受信したイベントを Observation として後続へ安全に引き渡すアーキテクチャを定義する。
 
-## Durable Objects によるセッションの単一所有
+## Cloudflare Gateway Instance と Durable Objects
 
-Discord Gateway のプロトコル仕様では、1 つのシャードに対して同時に複数のクライアントが接続することは許されず、単一のセッションが順序づけられたシーケンス番号（`sequence`）を厳密に管理しなければならない。
+Cloudflare 上で動作する Gateway Instance では、1つの Discord Gateway Session を単一の runtime owner が管理する必要がある。
 
-このドメイン要件を充足するため、Cloudflare 上での接続管理には **Durable Objects（DO）** を採用する。
+この Session 単位の所有と再開可能な状態管理を実現するため、Cloudflare 上の Gateway Instance には Durable Objects（DO）を採用する。
 
-* **排他的な単一所有権**: ギルド/シャードごとに 1 つの DO インスタンスを割り当て、WebSocket 接続の排他性を保証する。
-* **メモリ内でのセッション維持**: メモリ上で WebSocket コネクション、`session_id`、および最新の `sequence` を保持し、低レイテンシでハートビート（Heartbeat）の送受信とシーケンス更新を実行する。
-* **Alarm API による自律的死活監視**: DO の Alarm 機構を利用し、指定間隔（Heartbeat Interval）ごとの定期ハートビート送信と、ACK 未達時のタイムアウト・強制再接続判定を自律的に実行する。
+DO は「特定 shard を世界で唯一観測する owner」ではない。同じ shard assignment を持つ別 Gateway Instance が、Raspberry Pi や別の Cloudflare instance を含めて並行稼働することを許容する。
 
-## 再起動と Resume のアーキテクチャ
+```mermaid
+flowchart LR
+    Discord[Discord Gateway]
+    CF[Cloudflare Gateway Instance]
+    Home[別 Gateway Instance]
+    DO[Durable Object]
+    S1[Gateway Session A]
+    S2[Gateway Session B]
 
-Durable Objects は、デプロイや内部メンテナンスに伴い再起動（Eviction / Migration）が発生する場合がある。
+    CF --> DO
+    DO --> S1
+    Home --> S2
+    S1 <--> Discord
+    S2 <--> Discord
+```
 
-* **永続化境界**: セッション再開に必要な最小限の情報（`session_id`、`resume_gateway_url`、直近確定シーケンス番号）を DO のトランザクションストレージに随時永続化する。
-* **再起動後の Resume 試行**: DO インスタンスが再生成された際、保存されたセッション情報を読み込んで Discord への `Resume` を試行し、切断中のイベントを再受信する。
-* **無効セッション時のフォールバック**: セッション破棄（Invalid Session）を受信した場合は、速やかに新規セッションを確立（`Identify`）し、未取得となった区間の修復要求を Backfill コンポーネントへ発行する。
+各 Session は独立した `session_id` と `sequence` を持ち、Cloudflare 側の DO は自身が所有する Session の状態だけを管理する。
+
+## 再起動と Resume
+
+Durable Objects は、デプロイや内部メンテナンスに伴い再起動する場合がある。
+
+Cloudflare Gateway Instance は、自身の Session を Resume するために必要な最小限の情報を durable に保持する。
+
+再起動後は保存された Session state を利用して Discord への Resume を試行する。
+
+Invalid Session 等により Resume できない場合は、新規 Session を確立し、未取得区間の修復を Backfill へ委譲する。
+
+Cloudflare から別 Gateway Instance への移行では、Cloudflare Session の state を他 Instance へ移植することを前提としない。新しい Instance が独立 Session を確立し、一定期間並行観測した後に旧 Instance を停止する。
+
+## Observation への provenance
+
+Cloudflare Gateway Instance から downstream へ送る Observation には、少なくとも次の関係を後から追跡できる情報を保持する。
+
+* Cloudflare 上の Gateway Instance
+* Discord Gateway Session
+* shard assignment
+* Discord が発行した sequence
+
+同じ Discord 上の出来事を他の Gateway Instance も観測している可能性を正常系として扱う。
 
 ## ダウンストリームへの配送とバックプレッシャー
 
-DO が受信した Dispatch イベントは、直接 R2 に書き込まず、**Cloudflare Queues** を介して非同期に Observation Archive へ配送する。
+DO が受信した Dispatch イベントは、Observation Archive への durable write path へ非同期に引き渡す。
 
-* **障害隔離**: ストレージ（R2）の書き込み遅延や一時的な障害が発生した場合であっても、WebSocket 受信ループのブロックを阻止する。
-* **流量制御**: キュー滞留時におけるメモリバッファリング上限を規定し、メモリ超過によるクラッシュを防ぐバックプレッシャー戦略を適用する。
+ストレージの書き込み遅延や一時的な障害が WebSocket 受信ループへ連鎖しないよう failure boundary を設ける。
+
+具体的な Queue topology、batching、retry は Observation Architecture と Infrastructure Design で定義する。
 
 ## 分割予定の詳細設計
 
-* **Gateway Runtime Ownership**: DO インスタンスのライフサイクルとシャードマッピング
-* **Session Persistence**: DO ストレージへの状態書き込みタイミングとコスト最適化
-* **Heartbeat Runtime**: Alarm API を用いた正確なタイマー実装とゾンビ検知
-* **Resume Runtime**: 切断検知から再接続・Resume 実行までのステートマシン
-* **Event Handoff & Queues**: DO から Cloudflare Queues へのバッチ投入ロジック
-* **Backpressure Strategy**: ダウンストリーム遅延時のメモリ枯渇防止ルール
+* **Gateway Runtime Ownership**: 1 Gateway Session を所有する DO のライフサイクル
+* **Gateway Instance Identity**: Cloudflare 上の observer identity と shard assignment
+* **Session Persistence**: Resume に必要な state の durable boundary
+* **Heartbeat Runtime**: heartbeat と liveness の runtime 実装
+* **Resume Runtime**: 切断検知から Resume、新規 Session 確立までの状態遷移
+* **Multi-instance Handoff**: 新旧 Gateway Instance の並行稼働と停止条件
+* **Event Handoff**: Observation Archive への非同期引き渡し
+* **Backpressure Strategy**: downstream 遅延時の failure isolation

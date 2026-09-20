@@ -70,7 +70,11 @@ Durable Acceptance より前に失われた Gateway event については At-lea
 
 したがって、At-least-once は Discord から Observation Archive までの end-to-end 保証ではなく、**本システムが Observation を durable に受理した後の配送保証**である。
 
-## 分割予定の詳細設計
+## 詳細設計
+
+* [delivery-semantics.md](delivery-semantics.md): Received / Accepted Sequence、Durable Acceptance、Resume cursor の不変条件
+
+## 今後分割する詳細設計
 
 * **Gateway Instance Model**: 観測主体の安定した識別性とライフサイクル
 * **Gateway Session Lifecycle**: 接続確立、認証、切断、再接続の状態遷移モデル

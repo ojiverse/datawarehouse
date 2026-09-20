@@ -43,19 +43,19 @@ Canonical Store は Observation Archive から再構築可能な、分析向け�
 
 設計は大きく次の三つに分離します。
 
-- **Domain Design**: Discord DWH としての意味、状態、保証、復旧規則
-- **Architecture Design**: Domain Design を Cloudflare の能力と制約の下でどう実現するか
-- **Infrastructure Design**: 実際の Cloudflare リソース、環境、配置、権限、コスト
+- **ドメイン設計**: Discord DWH としての意味、状態、保証、復旧規則
+- **アーキテクチャ設計**: ドメイン設計を Cloudflare の能力と制約の下でどう実現するか
+- **インフラストラクチャ設計**: 実際の Cloudflare リソース、環境、配置、権限、コスト
 
-設計上の意思決定は ADR、障害対応などの運用手順は Runbook に分離します。
+設計上の意思決定は ADR、障害対応などの運用手順はランブックに分離します。
 
 ## 文書作成原則
 
-すべての設計ディレクトリは README.md を持ち、overview と index を兼ねます。
+すべての設計ディレクトリは README.md を持ち、概要と索引を兼ねます。
 
 設計文書は自然言語と Mermaid のみで記述します。実装コード、疑似コード、設定ファイル、SQL などは設計文書には含めません。
 
-各文書は 200 行以内とし、200 行を超える場合は progressive disclosure に沿って設計 concern を分割します。
+各文書は 200 行以内とし、200 行を超える場合は段階的開示に沿って設計上の関心事を分割します。
 
 ## 開発方針
 

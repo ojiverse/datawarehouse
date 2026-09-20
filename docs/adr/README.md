@@ -1,4 +1,4 @@
-# Architecture Decision Records
+# アーキテクチャ意思決定記録
 
 このディレクトリには、重要な設計判断とその理由を ADR として保存します。
 

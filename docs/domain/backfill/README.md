@@ -22,7 +22,7 @@ Gateway 障害中に作成され、その後削除された Message や、複数
 
 そのため、Gateway ingestion と HTTP Backfill では completeness guarantee を区別します。
 
-## Anti-entropy
+## アンチエントロピー
 
 HTTP API は Gateway の単なる非常用経路ではなく、Canonical completeness を継続的に確認する anti-entropy mechanism として扱います。
 

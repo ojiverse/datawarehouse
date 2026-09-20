@@ -12,13 +12,13 @@ Canonical Data を利用して Discord の状態や履歴を問い合わせる�
 
 具体的な query engine や SQL dialect はドメイン設計では扱いません。
 
-## Current State
+## 現在状態
 
 Current State は mutable database 上の唯一の行として保存されていることを前提としません。
 
 複数の Canonical Observation から、対象時点で最も妥当な状態を導出する projection として定義します。
 
-## Provenance
+## 来歴
 
 分析結果から、必要に応じて元の Canonical Data と Observation まで追跡できることを重視します。
 

@@ -1,23 +1,37 @@
 # Cloudflare Workers インフラ設計
 
-本ディレクトリでは、Discord DWH を構成する各コンポーネントのエントリポイントとなる Cloudflare Worker リソースの分割方針、配置、およびバインディング設計を定義する。
+本ディレクトリでは Discord DWH を構成する stateless Worker entry point と Durable Object host の責務分割を定義する。
 
-## Worker サービスの責務分割
+## Service Baseline
 
-障害の局所化（Failure Isolation）および独立したスケーリング・デプロイを実現するため、以下の関心事ごとに Worker サービスを分割配置する。
-
-| Worker サービス候補 | トリガー / エントリポイント | 主な責務 | 主なバインディング |
+| サービス | Entry point | 主な責務 | 主な binding |
 | :--- | :--- | :--- | :--- |
-| **Ingestion Worker** | Gateway WebSocket / DO | Gateway セッション管理（Durable Object ホスト）とキューへのイベント投入 | Durable Objects, Queues |
-| **Observation Queue Consumer** | Cloudflare Queues | キューからバッチ集約されたイベントを受け取り、R2 へ NDJSON/Parquet として書き込み | R2 (Observation Bucket) |
-| **Backfill Crawler Worker** | HTTP リクエスト / Queues / Cron | Discord HTTP API を巡回し、取得した生メッセージを Ingestion Queue へ投入 | Queues, Secrets (Bot Token) |
-| **Canonical Processing Worker** | R2 Event / Queues | 新着 Observation を読み込み、Iceberg テーブルへ正規化・書き込み | R2 (Observation & Canonical), Data Catalog |
-| **Query API Worker** | HTTP エンドポイント | 外部ダッシュボードや分析ツール向けに R2 SQL クエリを実行・返却 | R2 SQL, Data Catalog |
+| **Gateway Worker** | HTTP / DO routing | Gateway Session Durable Object の host と管理 endpoint | Durable Objects, R2, Secrets |
+| **Backfill API Worker** | HTTP | Backfill run の認証、validation、Channel DO への routing、status | Durable Objects, Secrets |
+| **External Ingest Worker** | HTTP | 非 Cloudflare Gateway の認証、Envelope validation、DWH-public admission、R2 commit | R2, auth secrets |
+| **Query API Worker** | HTTP | OJIverse membership admission、R2 SQL query、response | R2 SQL / Data Catalog, auth |
 
-## インフラ設計における確定事項
+first-MVP では Observation Queue Consumer と Canonical Processing Worker を必須 resource としない。
 
-* **サービス分割粒度**: 各責務を完全に独立した Worker プロジェクトとするか、単一リポジトリ内の複数モジュールとして段階的に切り出すかの決定。
-* **リソース制限と Quota**: 
-  * Ingestion Worker: WebSocket 接続を維持するための CPU 時間およびメモリフットプリントの最適化。
-  * Crawler Worker: レート制限待機時の不要なコンピュート消費を回避するための非同期キュー駆動の徹底。
-* **バインディング（Bindings）の最小権限**: 各 Worker に必要なリソース（R2 バケット、キュー、シークレット等）のみをバインドし、意図しない権限共有を防止。
+Observation は producer から R2 へ direct write し、Canonical materializer は PyIceberg external process として実行する。
+
+## Worker / Durable Object Boundary
+
+Worker は stateless authentication、validation、routing、response formatting を担当する。
+
+strong consistency、serialized ownership、durable progress、scheduled continuation が必要な state は Durable Object が所有する。
+
+Backfill progress を Worker memory や Queue message に保存しない。
+
+## Binding Principle
+
+各 Worker には責務遂行に必要な最小 binding のみを付与する。
+
+* Backfill API Worker は Observation bucket へ直接書き込まず Channel DO を経由する
+* Gateway Worker / Session DO は Observation bucket write を持つ
+* External Ingest Worker は Observation bucket create-only write を持つ
+* Query API Worker は Canonical read/query capability を持ち Observation write を持たない
+
+## Future Incremental Processing
+
+Canonical freshness のために Queue consumer / Pipelines bridge 等を追加する場合も独立 service とし、Observation Archive ingestion と failure domain を共有しない。

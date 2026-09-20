@@ -1,31 +1,35 @@
 # Cloudflare コストとキャパシティ設計
 
-本ディレクトリでは、Discord DWH を Cloudflare 上で運用する際に発生するインフラストラクチャ費用、利用枠（Included Quota）、およびコスト最適化とデータ耐久性のトレードオフ原則を定義する。
+本ディレクトリでは、Discord DWH を Cloudflare 上で運用する際に発生するインフラストラクチャ費用、利用枠、およびコスト最適化とデータ耐久性のトレードオフ原則を定義する。
 
-## プラン選定と月額コスト試算（本番環境）
+## プラン選定と基準構成
 
-本番環境では、WebSocket 常時接続とバックグラウンドタスクの安定実行のため、**Workers Paid プラン（月額 $5〜）** を基本契約として採用する。
+本番環境では、WebSocket 常時接続とバックグラウンドタスクの安定実行のため、Workers Paid プランを基本契約として採用する。
 
-| リソース項目 | 料金体系（Workers Paid 基準） | 本システム（1シャード）での月間想定利用量 | 追加課金の見込み |
-| :--- | :--- | :--- | :--- |
-| **Workers 基本料金** | $5.00 / 月 | 基本プラン適用 | $5.00（固定） |
-| **Workers リクエスト** | 1,000 万回までプランに含む | 約 200 万〜500 万リクエスト / 月 | 枠内に収まる見込み（$0） |
-| **Durable Objects Duration** | 400,000 GB-s までプランに含む | 128MB × 86,400秒 × 30日 ≈ 324,000 GB-s | **枠内に収まる見込み（$0）** |
-| **Durable Objects リクエスト** | 100 万回までプランに含む | WebSocket 接続確立 + 定期アラーム | 枠内に収まる見込み（$0） |
-| **Cloudflare Queues** | 100 万回操作まで無料 | 約 100 万〜300 万操作 / 月 | $0.40 / 100万操作（軽微） |
-| **R2 Storage** | 10 GB まで無料、超過分 $0.015 / GB | 数 GB〜数十 GB（年数に伴い増加） | 100GB でも月額 $1.50 程度 |
-| **R2 Class A 操作（PUT）** | 100 万回まで無料、超過分 $4.50 / 100万回 | キューバッチ集約により月数万〜十万回 | **無料枠内に収まる見込み（$0）** |
-| **R2 Class B 操作（GET）** | 1,000 万回まで無料 | 分析クエリ・リプレイ時のみ発生 | 無料枠内に収まる見込み（$0） |
+コスト試算の基準構成は、**Cloudflare 上で常時稼働する Gateway Instance が1つ**の状態とする。
 
-※ 初期フェーズ（単一シャード・数ギルド規模）においては、**月額約 $5〜$10 前後の低廉なランニングコスト**で安定運用が成立する見通しである。
+Discord shard 数と Gateway Instance 数は同一概念ではない。同じ shard assignment を複数 Gateway Instance が並行して観測できるため、Durable Objects の capacity は shard 数だけでなく Cloudflare 上の Gateway Instance 数を基準に評価する。
+
+## 複数 Gateway とコスト
+
+Raspberry Pi 等の Cloudflare 外 Gateway Instance を追加しても、その Instance 自体は Cloudflare Durable Objects Duration を消費しない。
+
+Cloudflare 上で新旧 Gateway Instance を一時的に並行稼働させる場合は、その overlap 期間だけ Durable Objects の消費が増加する。
+
+Cloudflare 内で複数 Gateway Instance を常時 active にする場合は、Workers Paid の included usage に収まることを前提にせず、Instance 数と実測 duration に基づいて追加コストを評価する。
 
 ## コストと耐久性に関する基本不変条件
 
-* **耐久性の犠牲によるコスト削減の禁止**: コスト削減のみを理由として、Observation Archive の保存を省略したり、キューのバッチサイズを過剰に拡大してメモリ内損失リスクを高める等、システムのデータ耐久性・回復可能性を損なう設計変更を禁じる。
-* **トレードオフの明文化**: コスト制約によりデータ保証レベル（生ログ保存期間短縮等）を変更する場合は、必ずアーキテクチャ設計および [ADR](../../../adr/README.md) にその論理的根拠とリスクを記録しなければならない。
+* **耐久性の犠牲によるコスト削減の禁止**: コスト削減のみを理由として Observation Archive の保存や回復経路を省略しない
+* **複数 Gateway の許容**: コストを理由に Gateway Instance の並行稼働という domain capability 自体を禁止しない
+* **トレードオフの明文化**: 保証レベルや常時冗長化方針を変更する場合は、アーキテクチャ設計および ADR に根拠を記録する
 
 ## ベータ期間での実測検証項目
 
-* Durable Objects の実測メモリフットプリント（128MB 以内への安定収束）
-* キューのバッチサイズに応じた R2 Class A 操作数の実測値
-* R2 SQL のデータ走査量（スキャン GB 数）とクエリ課金の実測
+* Gateway Instance 1つあたりの Durable Objects Duration
+* 新旧 Cloudflare Gateway Instance を overlap させた場合の追加消費
+* Queue の batch size に応じた R2 operation 数
+* R2 SQL のデータ走査量
+* Backfill と reconciliation の実行頻度による Workers / Queues 使用量
+
+具体的な単価と included quota は Cloudflare の料金体系変更に追従して更新する。

@@ -40,6 +40,10 @@ R2 conditional put を利用して、既存 key を上書きしない。
 
 Source payload hash には SHA-256 を使用する。
 
+この no-overwrite rule は通常 ingestion / retry に対する不変条件である。Product Policy に基づく explicit erasure だけは例外とし、対象 API Data を物理除去するため既存 object の compliance rewrite または delete を許可する。
+
+Compliance rewrite は current ETag を条件にした compare-and-swap とし、並行更新で古い payload を復活させない。rewrite 後は erasure metadata と新しい payload hash を保存する。
+
 ## Payload Size
 
 Observation payload を Cloudflare Queues の message size に合わせて切り詰めてはならない。

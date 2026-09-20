@@ -36,6 +36,14 @@ Discord application / Bot 単位で共有される HTTP global rate limit と in
 
 route-specific bucket state は Channel Durable Object 側で response-driven に管理する。
 
+## Gateway Identify Coordinator Durable Object
+
+Discord application ごとに1つの Identify Coordinator Durable Object を配置する。
+
+Get Gateway Bot 由来の session_start_limit、max_concurrency bucket、Identify lease を durable に管理し、Cloudflare 内外の全 Gateway Instance の新規 Identify を直列化・制限する。
+
+外部 Gateway Instance は authenticated Worker endpoint を経由して lease を取得する。
+
 ## Worker と Durable Object の境界
 
 stateless Worker は authentication、validation、routing、response formatting を担当する。

@@ -46,8 +46,8 @@ Gateway 由来の `session_id` と `sequence` は、その Gateway Session 内�
 ## 重複と整合性の不変条件
 
 * **通常取り込みでの追記優先**: 日常的な ingestion では既存 Observation の更新ではなく、新しい観測の追記を基本とする
-* **欠損防止のための重複許容**: Resume replay、複数 Gateway による並行観測、Worker retry、HTTP pagination overlap 等に伴う重複を許容する
-* **Source-local な重複と意味的な重複の分離**: 同一 Session の再送と、異なる Session が同じ出来事を観測した場合を同じ問題として扱わない
+* **欠損防止のための重複許容**: Durable Acceptance 後の At-least-once 配送では retry による重複が正常に発生し得る。加えて Resume replay、複数 Gateway による並行観測、HTTP pagination overlap 等に伴う重複も許容する
+* **Source-local な重複と意味的な重複の分離**: At-least-once retry や同一 Session の再送による source-local duplicate と、異なる Session が同じ出来事を観測した semantic duplicate を同じ問題として扱わない
 * **追跡可能性の保証**: Canonical Data から、その状態の根拠となった Observation 群と元の取得経路まで辿れること
 
 ## 分割予定の詳細設計

@@ -1,8 +1,8 @@
-# Ingestion Domain
+# 取り込みドメイン
 
-Discord Gateway から継続的に Observation を取得するための Domain Design を扱います。
+Discord Gateway から継続的に Observation を取得するためのドメイン設計を扱います。
 
-## Scope
+## 対象
 
 - Gateway connection と logical session の関係
 - Identify と Resume
@@ -12,7 +12,7 @@ Discord Gateway から継続的に Observation を取得するための Domain D
 - Connection loss と session recovery
 - Observation へ引き渡すまでの delivery semantics
 
-## Non-scope
+## 対象外
 
 - Cloudflare 上で Gateway connection をどの resource が所有するか
 - Timer や永続状態をどう実装するか
@@ -40,4 +40,4 @@ Gateway 経由で取得できる event history と、HTTP API から後から取
 - Event Delivery Semantics
 - Backpressure and Failure Semantics
 
-各文書が 200 行以内になるよう concern ごとに分割します。
+各文書が 200 行以内になるよう関心事ごとに分割します。

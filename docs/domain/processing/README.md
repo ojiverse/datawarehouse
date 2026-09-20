@@ -1,8 +1,8 @@
-# Processing Domain
+# 処理ドメイン
 
 Observation Archive の Observation を Canonical Data へ変換する処理の意味論を扱います。
 
-## Scope
+## 対象
 
 - Observation の解釈
 - Canonical entity への normalization

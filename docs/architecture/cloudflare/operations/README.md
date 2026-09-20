@@ -1,8 +1,8 @@
-# Cloudflare Operations Architecture
+# Cloudflare 運用アーキテクチャ
 
 Cloudflare 上で Discord DWH を安定運用するために application architecture が備えるべき運用 capability を扱います。
 
-## Scope
+## 対象
 
 - Gateway liveness の検知
 - Resume failure の検知
@@ -12,7 +12,7 @@ Cloudflare 上で Discord DWH を安定運用するために application archite
 - Fault injection
 - Production readiness の検証
 
-具体的な dashboard、alert destination、log sink などは Infrastructure Design に分離します。
+具体的な dashboard、alert destination、log sink などはインフラストラクチャ設計に分離します。
 
 ## 検証方針
 

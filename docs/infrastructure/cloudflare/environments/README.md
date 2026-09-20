@@ -1,22 +1,22 @@
-# Cloudflare Environments
+# Cloudflare 環境
 
 開発から安定稼働までの Cloudflare environment 分離を扱います。
 
 ## 想定フェーズ
 
-### Development
+### 開発
 
 HTTP Backfill を中心に、Observation Archive と Canonical Store への保存が正しく動作することを検証します。
 
 Gateway の常時接続は必須としません。
 
-### Beta
+### ベータ
 
 Gateway を短期間、断続的に接続します。
 
 Gateway からの保存、切断、再接続、Resume、Backfill による回復を検証します。
 
-### Production
+### 本番
 
 Workers Paid を利用し、Gateway を継続運用します。
 

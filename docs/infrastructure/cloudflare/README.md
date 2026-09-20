@@ -1,8 +1,8 @@
-# Cloudflare Infrastructure
+# Cloudflare インフラストラクチャ
 
 Discord DWH を運用するために必要な Cloudflare resource と環境構成を扱います。
 
-## Subsystem
+## サブシステム
 
 - [environments/README.md](environments/README.md): development、beta、production
 - [workers/README.md](workers/README.md): Worker resource と責務
@@ -20,6 +20,6 @@ Discord DWH を運用するために必要な Cloudflare resource と環境構�
 
 開発とベータでは可能な範囲を Free tier で検証します。
 
-Gateway を安定して継続運用する production phase では Workers Paid を利用する方針です。
+Gateway を安定して継続運用する本番フェーズでは Workers Paid を利用する方針です。
 
 具体的な resource 数、命名、binding、quota budget は詳細設計で確定します。

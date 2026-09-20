@@ -1,8 +1,10 @@
 # ADR-0006: Discord Gateway のセッション管理に Durable Objects を採用する方針
 
-* **ステータス**: 一部置換（Partially Superseded by ADR-0007）
+* **ステータス**: 一部置換（Partially Superseded by ADR-0007 / ADR-0012）
 * **決定日**: 2026-09-20
 * **対象領域**: アーキテクチャ設計 / インフラストラクチャ設計
+
+> **置換注記**: shard 排他所有の前提は ADR-0007、session persistence / Resume watermark と zero-loss migration の前提は ADR-0012 により置換された。本文は当時の判断履歴として保持する。
 
 ## コンテキストと課題
 

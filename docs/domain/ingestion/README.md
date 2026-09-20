@@ -5,36 +5,58 @@
 ## 責務と境界
 
 ### 扱う対象
-* **接続とセッションのライフサイクル**: 物理的な WebSocket 接続と、Discord 上の論理セッション（Gateway Session）の対応関係
-* **ハンドシェイクと復旧**: 初回認証（`Identify`）と切断後のセッション再開（`Resume`）のプロトコル
-* **順序と追跡性**: シーケンス番号（`sequence`）の進捗管理と欠損検知
+* **Gateway Instance**: 本システム側で Gateway 接続を実行する観測主体。Cloudflare、Raspberry Pi、その他の実行環境に複数存在できる
+* **Gateway Session**: Discord が発行する論理セッション。各 Session は独立した `session_id` と `sequence` 系列を持つ
+* **Shard Assignment**: 各 Gateway Session が担当する Discord shard。移行や検証のため、同一 shard を複数 Session が並行して観測することを許容する
+* **ハンドシェイクと復旧**: 初回認証（`Identify`）と切断後の同一セッション再開（`Resume`）
+* **順序と追跡性**: Discord が発行する `sequence` を、各 Gateway Session 内の順序と Resume cursor として追跡する
 * **活性監視**: ハートビート（`Heartbeat`）の送受信による死活監視（Liveness）
-* **イベント受理と配送**: 受信した Dispatch イベントをダウンストリーム（Observation Archive）へ確実に引き渡す配送セマンティクス
+* **イベント受理と配送**: 受信した Dispatch イベントを Observation Archive へ確実に引き渡す配送セマンティクス
 
 ### 扱わない対象（アーキテクチャ・インフラ層へ委譲）
-* Cloudflare 上で WebSocket 接続を所有する具体リソース（Durable Objects 等）
-* タイマーのスケジューリングや永続化ストレージの実装手段
-* キュー（Cloudflare Queues）やストレージ（R2）の物理構成
+* Gateway Instance をどの実行基盤へ配置するか
+* WebSocket 接続、タイマー、永続状態をどの具体リソースで実装するか
+* キューやストレージの物理構成
+* HTTP Backfill の crawler 実装
+
+## 複数 Gateway を前提とする不変条件
+
+同一の Discord traffic coverage に対し、複数の Gateway Instance と Gateway Session が同時に存在することを正常状態として扱う。
+
+これは Cloudflare から Raspberry Pi への移行、ローリング更新、検証用の並行稼働、将来の冗長化を特別な migration mode なしで扱うための前提である。
+
+各 Gateway Session は独立した Discord event stream であり、Session 間で `session_id` や `sequence` を共有しない。
+
+同じ Discord 上の出来事が複数 Session から重複して観測されることを許容し、Observation Archive ではそれぞれ独立した観測証跡として保持する。
+
+`sequence` は Discord が Gateway Session ごとに発行する順序情報であり、複数 Session 間で共通のイベント識別子または全体順序として扱わない。
 
 ## Gateway 取り込みの基本原則
 
 ### 1. 切断と接続断の通常事象化
-公衆網を介した長時間の WebSocket 接続において、ネットワーク瞬断、Discord 側のクラスタ再起動、およびクラウド基盤側の移行は不可避である。
-システムは接続断を致命的な障害ではなく「定常的に発生する通常事象」として扱い、切断検知から自動再接続に至るステートマシンを標準動作として組み込む。
+公衆網を介した長時間の WebSocket 接続において、ネットワーク瞬断、Discord 側のクラスタ再起動、および実行基盤側の再起動は不可避である。
+システムは接続断を致命的な障害ではなく「定常的に発生する通常事象」として扱い、切断検知から自動再接続に至る状態遷移を標準動作として組み込む。
 
-### 2. Resume による継続と HTTP Backfill への委譲
-切断発生時、Discord Gateway のセッションキャッシュが有効な期間内であれば、保持する `session_id` と `sequence` を用いて `Resume` を試行し、切断中の滞留イベントを受信する。
-セッションが無効化（Invalid Session）されて Resume に失敗した場合は、Gateway 単独での過去復元を試みず、速やかに新規セッションを確立した上で、欠損区間を [HTTP Backfill](../backfill/README.md) による回復へ委譲する。
+### 2. Resume と新規 Session の役割分離
+同一 Gateway Session の接続断から回復する場合は、保持する `session_id` と `sequence` を用いて `Resume` を試行する。
+
+実行環境の移行や別 Gateway Instance の追加では、既存 Session の状態を別 Instance へ移植することを前提とせず、新しい独立 Session を確立して並行観測期間を設ける。
+
+Session が無効化され Resume に失敗した場合は、新規 Session を確立した上で、欠損区間を [HTTP Backfill](../backfill/README.md) による回復へ委譲する。
 
 ### 3. イベント履歴とスナップショットの非等価性
-Gateway 経由で受信可能なデータは「発生したイベントの生の時系列」である。一方、HTTP API で取得可能なデータは「リクエスト時点で Discord 上に残存する最新状態」である。
+Gateway 経由で受信可能なデータは「発生したイベントの時系列」である。一方、HTTP API で取得可能なデータは「リクエスト時点で Discord 上に残存する状態」である。
+
 Gateway の取りこぼしを HTTP Backfill で補完する場合であっても、両者が提供する完全性保証の差異をドメインとして認識し、架空のイベント履歴の合成を禁じる。
 
 ## 分割予定の詳細設計
 
+* **Gateway Instance Model**: 観測主体の安定した識別性とライフサイクル
 * **Gateway Session Lifecycle**: 接続確立、認証、切断、再接続の状態遷移モデル
+* **Shard Assignment**: Instance、Session、Discord shard の関係
+* **Multi-session Observation**: 同一 traffic を複数 Session が観測する場合の意味論
 * **Heartbeat & Liveness**: ハートビート送信間隔、ACK タイムアウト判定、ゾンビ接続の検知
-* **Resume & Recovery**: Resume 試行、セッション破棄判定、Backfill へのハンドオフ条件
+* **Resume & Recovery**: Resume 試行、Session 破棄判定、Backfill へのハンドオフ条件
 * **Gateway Event Semantics**: 受理すべき Dispatch イベント種別とペイロードの扱い
-* **Event Delivery Semantics**: 受信からストレージ永続化までの少なくとも1回（At-least-once）配送保証
+* **Event Delivery Semantics**: 受信からストレージ永続化までの配送保証
 * **Backpressure & Failure Semantics**: 後続ストレージ遅延・障害時におけるバッファリングと流量制御

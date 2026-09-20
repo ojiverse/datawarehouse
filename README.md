@@ -44,17 +44,19 @@ flowchart TD
 
 ## 設計文書の構成
 
-設計文書はすべて [docs/README.md](docs/README.md) を起点として段階的に展開されます。関心事に応じて以下の3層に分離しています。
+設計文書はすべて [docs/README.md](docs/README.md) を起点として段階的に展開されます。関心事に応じて以下のように体系化しています。
 
 ```mermaid
 flowchart LR
-    Domain[ドメイン設計<br>docs/domain] --> Arch[アーキテクチャ設計<br>docs/architecture]
+    Principles[原則・ポリシー<br>engineering-principles/<br>design-policy/] --> Domain[ドメイン設計<br>docs/domain]
+    Domain --> Arch[アーキテクチャ設計<br>docs/architecture]
     Arch --> Infra[インフラストラクチャ設計<br>docs/infrastructure]
 ```
 
-1. **ドメイン設計 (`docs/domain`)**: Discord DWH としてのデータモデル、状態遷移、整合性保証、復旧規則を定義します（クラウド基盤の語彙は含みません）。
-2. **アーキテクチャ設計 (`docs/architecture`)**: ドメインの要求を、Cloudflare などのプラットフォーム上でどのように実現するかを定義します。
-3. **インフラストラクチャ設計 (`docs/infrastructure`)**: 実際に作成する Cloudflare リソース、環境分離、権限、コスト試算を定義します。
+* **エンジニアリング原則・設計ポリシー (`docs/engineering-principles`, `docs/design-policy`)**: 不変条件、事実源、型、不変性、確実性レベルなど、リポジトリ全体を貫く普遍的な設計原則とチェックリスト。
+* **ドメイン設計 (`docs/domain`)**: Discord DWH としてのデータモデル、状態遷移、整合性保証、復旧規則を定義します（クラウド基盤の語彙は含みません）。
+* **アーキテクチャ設計 (`docs/architecture`)**: ドメインの要求を、Cloudflare などのプラットフォーム上でどのように実現するかを定義します。
+* **インフラストラクチャ設計 (`docs/infrastructure`)**: 実際に作成する Cloudflare リソース、環境分離、権限、コスト試算を定義します。
 
 ※ 設計上の意思決定の背景は [ADR](docs/adr/README.md) に、障害対応や手動運用の手順は [ランブック](docs/runbooks/README.md) にそれぞれ分離しています。
 

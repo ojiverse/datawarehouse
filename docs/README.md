@@ -6,29 +6,37 @@
 
 ## 文書体系と関心事の分離
 
-設計文書は、抽象度と関心事に応じて以下の5つに分類しています。
+設計文書は、抽象度と関心事に応じて以下の分類で体系化しています。
 
 ```mermaid
 flowchart TD
     Root[docs/README.md]
+    Principles[エンジニアリング原則<br>engineering-principles/]
+    Policy[設計ポリシー<br>design-policy/]
     Domain[ドメイン設計<br>domain/]
     Arch[アーキテクチャ設計<br>architecture/]
     Infra[インフラストラクチャ設計<br>infrastructure/]
     ADR[意思決定記録<br>adr/]
     Runbooks[運用手順書<br>runbooks/]
 
+    Root --> Principles
+    Root --> Policy
     Root --> Domain
     Root --> Arch
     Root --> Infra
     Root --> ADR
     Root --> Runbooks
 
+    Principles -.適用.-> Policy
+    Policy -.準拠.-> Domain
     Domain -.実現方法.-> Arch
     Arch -.リソース配置.-> Infra
 ```
 
 | 分類 | 格納ディレクトリ | 主な責務と対象 | クラウド固有情報の扱い |
 | :--- | :--- | :--- | :--- |
+| **エンジニアリング原則** | [engineering-principles/](engineering-principles/README.md) | 不変条件、事実源、型、不変性など、長期運用に耐えうる普遍的な設計原則 | **完全非依存**（アーキテクチャ思考の共通基盤） |
+| **設計ポリシー** | [design-policy/](design-policy/README.md) | 原則をデータソース追加や「現在の確実性レベル」に適用した具体的ポリシー | **完全非依存**（設計チェックリストを提供） |
 | **ドメイン設計** | [domain/](domain/README.md) | Discord DWH の意味論、エンティティ定義、データ整合性、復旧規則 | **原則禁止**（特定インフラに依存しない不変の要求を記述） |
 | **アーキテクチャ設計** | [architecture/](architecture/README.md) | ドメイン要求を Cloudflare の能力・制約下で実現するコンポーネント構成 | **採用技術の方針のみ**（Worker, Durable Objects, R2 などの責務分担） |
 | **インフラストラクチャ設計** | [infrastructure/](infrastructure/README.md) | 実際のリソース定義、環境分離、バインディング、権限、コスト試算 | **完全許容**（Cloudflare の具体的な設定や制限値を詳細化） |
@@ -42,11 +50,14 @@ flowchart TD
 ```mermaid
 flowchart TD
     Topic[新しい設計上の関心事]
+    IsPrinciple{普遍的な設計思想や<br>設計ポリシーに関する内容か？}
     IsDomain{Discord DWH としての<br>意味・状態・保証に関する内容か？}
     IsArch{特定プラットフォーム上での<br>コンポーネント構成や実現方法か？}
     IsInfra{具体リソース・環境・権限・<br>コストに関する設定か？}
 
-    Topic --> IsDomain
+    Topic --> IsPrinciple
+    IsPrinciple -->|はい| Principle[engineering-principles/ または design-policy/]
+    IsPrinciple -->|いいえ| IsDomain
     IsDomain -->|はい| Domain[domain/]
     IsDomain -->|いいえ| IsArch
     IsArch -->|はい| Arch[architecture/]

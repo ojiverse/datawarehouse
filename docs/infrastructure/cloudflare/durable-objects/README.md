@@ -1,58 +1,61 @@
 # Cloudflare Durable Objects インフラ設計
 
-本ディレクトリでは、Cloudflare 上の Gateway Instance が所有する Discord Gateway Session を維持するための Durable Objects（DO）のインフラ構成、名前空間、およびキャパシティ設計を定義する。
+本ディレクトリでは stateful coordination に使用する Durable Objects の class と ownership boundary を定義する。
 
-## 名前空間とインスタンス識別
+すべての新規 class は SQLite-backed Durable Objects を使用する。
 
-Durable Object は Discord shard 全体の唯一の owner ではなく、**Cloudflare 上の1つの Gateway Instance が持つ1つの Gateway Session の owner** として扱う。
+## Gateway Session Durable Object
 
-同じ shard assignment に対して、別 Gateway Instance が並行して存在することを許容する。
+Gateway Session Durable Object は、Cloudflare 上の1 Gateway Instance が所有する1 Discord Gateway Session の stateful owner とする。
 
-そのため DO の instance identity は shard ID だけでは一意化せず、少なくとも Gateway Instance と shard assignment を区別できなければならない。
+同じ shard assignment に別 Gateway Instance が存在することを許容し、shard ID だけで global singleton を作らない。
 
-具体的な instance key format は詳細設計で決定する。
+durable state には少なくとも Gateway Instance identity、Session ID、resume gateway URL、shard assignment、Accepted Sequence を保持する。
 
-```mermaid
-flowchart TD
-    CF1[Cloudflare Gateway Instance A]
-    CF2[Cloudflare Gateway Instance B]
-    DO1[Durable Object A]
-    DO2[Durable Object B]
-    S1[Discord Session A]
-    S2[Discord Session B]
-    Shard[同一 Shard Assignment]
+Received Sequence は connection-local state として管理し、Accepted Sequence と分離する。
 
-    CF1 --> DO1 --> S1 --> Shard
-    CF2 --> DO2 --> S2 --> Shard
-```
+R2 Archive commit 後にのみ Accepted Sequence を前進させる。
 
-Raspberry Pi など Cloudflare 外の Gateway Instance は、この DO namespace の管理対象ではない。
+## Backfill Channel Durable Object
 
-## Session State
+Backfill は Discord Channel を coordination atom とする。
 
-各 DO は自身が所有する Discord Session の Resume に必要な state を保持する。
+environment と Channel ID から安定して同じ Durable Object を解決し、同一 Channel に複数 active run を許可しない。
 
-別 Gateway Instance の Session state を共有したり、Cloudflare から別 runtime への移行時に Session state を移植することは前提としない。
+SQLite storage に Run ID、target range、pagination position、run state、last archived page、next execution time、terminal error を保持する。
 
-移行時は新 Gateway Instance が独立 Session を開始し、並行観測後に旧 Instance を停止する。
+page continuation には Alarm を使用する。
 
-## リソース消費とコスト
+Alarm の at-least-once execution を前提に handler を idempotent にする。
 
-Cloudflare 上で常時稼働する Gateway Instance 数に応じて Durable Objects Duration が増加する。
+## Discord HTTP Budget Durable Object
 
-1つの Cloudflare Gateway Instance を常時稼働させる場合のコスト試算は引き続き基準値として利用する。
+Discord application / Bot 単位で共有される HTTP global rate limit と invalid-request budget を協調するため、application 単位の Budget Durable Object を使用する。
 
-移行期間に Cloudflare 上で複数 Instance を重ねる場合や、将来 Cloudflare 内で常時冗長化する場合は、Instance 数に応じた追加消費を capacity planning に含める。
+各 Backfill Channel Durable Object は request 実行前後に Budget owner と協調し、global ceiling と invalid-request budget を超えないようにする。
 
-Cloudflare 外の Gateway Instance は Durable Objects Duration を消費しない。
+route-specific bucket state は Channel Durable Object 側で response-driven に管理する。
 
-## 設計時に確定する事項
+## Worker と Durable Object の境界
 
-* Gateway Instance identity と DO instance key の対応
-* Shard assignment との対応
-* Session state の永続化境界
-* Storage usage
-* Liveness mechanism
-* Deployment 時の新旧 Instance overlap
-* Environment 分離
-* Resource monitoring
+stateless Worker は authentication、validation、routing、response formatting を担当する。
+
+strong consistency、per-entity serialization、durable progress、scheduled continuation が必要な責務だけを Durable Object に置く。
+
+Durable Object を単なる stateless request handler として利用しない。
+
+## Storage
+
+Durable Object storage は control / coordination state のために使用する。
+
+Observation Archive や Canonical Data の primary data store として使用しない。
+
+SQLite storage の transaction と Point-in-Time Recovery は運用上利用できるが、Observation Archive の代替にはしない。
+
+## Gateway Runtime Verification
+
+outbound WebSocket は hibernation 対象外であり、outbound connection が eviction を防ぐ効果には時間上限がある。
+
+#18 の technical verification が完了するまで、Durable Object が Discord Gateway Session を無期限に維持できることを確定事実として扱わない。
+
+検証結果によって Gateway runtime を変更しても、Session state と Accepted Sequence の domain semantics は維持する。

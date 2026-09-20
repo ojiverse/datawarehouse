@@ -1,6 +1,6 @@
 # アーキテクチャ意思決定記録（ADR）
 
-本ディレクトリでは、プロジェクトにおける重要な技術的・設計上の意思決定と、その判断に至った背景やトレードオフを ADR（Architecture Decision Records）として記録・管理します。
+本ディレクトリでは、OJIverse Data Warehouse における重要な技術的・設計上の意思決定と、その判断に至った背景やトレードオフを ADR（Architecture Decision Records）として記録・管理します。
 
 ## ADR の役割と運用方針
 
@@ -8,17 +8,17 @@
 
 * **歴史の改ざん禁止**: 一度合意された ADR は後から直接改変せず、過去の事実として保存します。
 * **Supersede（置換）による更新**: 前提条件の変化や要件変更によって判断を改める場合は、新しい ADR を起票して古い ADR を `Superseded by ADR-xxx` として参照・更新します。
-* **文書制約の継承**: 各 ADR もプロジェクト共通の原則に従い、自然言語を中心に簡潔に記述し、200行以内を維持します。
+* **文書制約の継承**: 各 ADR もプロジェクト共通の原則に従い、自然言語を中心に論理パラグラフで記述し、200行以内を維持します。
 
-## 早期に策定予定の ADR 候補
+## 採択済み ADR 一覧
 
-初期設計において合意された主要方針のうち、以下のテーマについて順次 ADR の起票を予定しています。
+本プロジェクトの基本アーキテクチャを決定づけた主要な意思決定の一覧です。
 
-| ADR 候補 | 決定の要点とトレードオフの観点 |
-| :--- | :--- |
-| **Observation Archive と Canonical Store の2層分離** | 単一の正規化 DB を持たず、生データの追記専用ストレージを前段に置く理由（再処理性と長期運用の確保）。 |
-| **Observation Archive を唯一の事実証跡（Source of Evidence）とする方針** | Canonical 側のデータ消失やスキーマ破壊が発生しても、生データから完全に再計算可能にする設計保証。 |
-| **コア DWH においてリレーショナル DB（D1 等）を必須としない方針** | 大規模ログ分析においてトランザクション DB への書き込み依存を排除し、ストレージコストと書き込み限界を回避する判断。 |
-| **HTTP Backfill を定常的なアンチエントロピー機構とする方針** | 単なる初期移行ツールではなく、リアルタイム Gateway の取りこぼしを定期的に差分照合・自己修復する中核機能としての位置づけ。 |
-| **主要プラットフォームとして Cloudflare を採用する方針** | エッジ分散環境、Durable Objects による WebSocket 常時接続、R2 による安価なオブジェクトストレージの統合性。 |
-| **Discord Gateway のセッション管理に Durable Objects を採用する方針** | 単一シャードの常時接続と Resume 状態の排他的維持を、サーバーレス環境で最小コストで実現するアプローチ。 |
+| 番号 | タイトル | 決定の要点 | ステータス |
+| :--- | :--- | :--- | :--- |
+| [0001](0001-two-layer-storage-architecture.md) | **2層ストレージアーキテクチャ** | 生ログ（Observation）と分析モデル（Canonical）を分離し、いつでも全再構築を可能にする | 承認（Accepted） |
+| [0002](0002-observation-archive-as-source-of-evidence.md) | **生ログの唯一の事実証跡化** | HTTP 取得データを架空の Gateway イベントに偽装せず、厳格な来歴（Provenance）を保持する | 承認（Accepted） |
+| [0003](0003-avoid-relational-db-in-core-dwh.md) | **コア DWH における RDB 排除** | 書き込み限界とコストを回避するため、D1 等のリレーショナル DB をデータパスから排除する | 承認（Accepted） |
+| [0004](0004-http-backfill-as-anti-entropy.md) | **Backfill の定常アンチエントロピー化** | 単なる初期移行ツールではなく、リアルタイム欠損を定常修復する中核機構として位置づける | 承認（Accepted） |
+| [0005](0005-cloudflare-as-primary-platform.md) | **主要基盤としての Cloudflare 採用** | 月額 $5〜 の超低コスト運用、R2 の転送量無料、Durable Objects の WebSocket 統合性を評価 | 承認（Accepted） |
+| [0006](0006-durable-objects-for-gateway-session.md) | **Gateway 管理への Durable Objects 採用** | 単一シャードの常時接続と Resume 状態の排他的維持を、サーバーレス環境で最小コストで実現 | 承認（Accepted） |

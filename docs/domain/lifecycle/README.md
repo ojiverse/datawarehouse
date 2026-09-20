@@ -1,8 +1,8 @@
-# Data Lifecycle Domain
+# データライフサイクルドメイン
 
 Discord DWH を5〜10年運用する前提で、データの保持、削除、再構築などの lifecycle を扱います。
 
-## Scope
+## 対象
 
 - Observation の retention
 - Canonical Data の retention

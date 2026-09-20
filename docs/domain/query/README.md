@@ -1,8 +1,8 @@
-# Query Domain
+# クエリドメイン
 
 Canonical Data を利用して Discord の状態や履歴を問い合わせる際の意味論を扱います。
 
-## Scope
+## 対象
 
 - Current State projection
 - Historical State
@@ -10,7 +10,7 @@ Canonical Data を利用して Discord の状態や履歴を問い合わせる�
 - Channel や Thread 単位の分析
 - Aggregate query に必要な意味定義
 
-具体的な query engine や SQL dialect は Domain Design では扱いません。
+具体的な query engine や SQL dialect はドメイン設計では扱いません。
 
 ## Current State
 

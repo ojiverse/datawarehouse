@@ -1,6 +1,6 @@
-# Cloudflare Architecture
+# Cloudflare アーキテクチャ
 
-Discord DWH の Domain Design を Cloudflare 上で実現する application architecture を扱います。
+Discord DWH のドメイン設計を Cloudflare 上で実現する application architecture を扱います。
 
 ## 全体像
 
@@ -23,9 +23,9 @@ flowchart TD
     Canonical --> Query
 ```
 
-具体的な Cloudflare resource 名や environment ごとの構成は Infrastructure Design で扱います。
+具体的な Cloudflare resource 名や environment ごとの構成はインフラストラクチャ設計で扱います。
 
-## Subsystem
+## サブシステム
 
 - [ingestion/README.md](ingestion/README.md): Gateway の継続接続、session state、delivery
 - [observations/README.md](observations/README.md): Observation Archive への durable write path
@@ -38,6 +38,6 @@ flowchart TD
 
 Observation Archive の durability を Canonical materialization の成功に依存させません。
 
-Cloudflare 固有機能は Domain requirement を実現する手段として扱い、Domain の意味そのものと混同しません。
+Cloudflare 固有機能はドメイン要件を実現する手段として扱い、ドメインの意味そのものと混同しません。
 
-Beta や production の具体的な environment 構成は Infrastructure Design に置きます。
+Beta や production の具体的な environment 構成はインフラストラクチャ設計に置きます。

@@ -1,27 +1,27 @@
-# Architecture Design
+# アーキテクチャ設計
 
-このディレクトリでは Domain Design を特定 platform の能力と制約の下でどう実現するかを扱います。
+このディレクトリではドメイン設計を特定プラットフォームの能力と制約の下でどう実現するかを扱います。
 
 ## 役割
 
-Domain Design は Discord DWH としての意味や保証を定義します。
+ドメイン設計は Discord DWH としての意味や保証を定義します。
 
-Architecture Design は、それらを実際に成立させるために application component をどう構成し、platform capability をどう利用するかを定義します。
+アーキテクチャ設計は、それらを実際に成立させるために application component をどう構成し、platform capability をどう利用するかを定義します。
 
-Infrastructure resource の具体的な名前、binding、environment、権限、IaC などは Infrastructure Design に分離します。
+Infrastructure resource の具体的な名前、binding、environment、権限、IaC などはインフラストラクチャ設計に分離します。
 
-## Platform
+## プラットフォーム
 
-現在の主要 platform は Cloudflare です。
+現在の主要プラットフォームは Cloudflare です。
 
-Cloudflare 上での Architecture Design は [cloudflare/README.md](cloudflare/README.md) 以下に配置します。
+Cloudflare 上でのアーキテクチャ設計は [cloudflare/README.md](cloudflare/README.md) 以下に配置します。
 
-将来別 platform を採用する場合は、同じ階層に別 platform の directory を追加できます。
+将来別プラットフォームを採用する場合は、同じ階層に別プラットフォームのディレクトリを追加できます。
 
-## Domain との関係
+## ドメインとの関係
 
-Infrastructure の制約が Domain requirement に影響する場合があります。
+インフラストラクチャの制約がドメイン要件に影響する場合があります。
 
 その影響自体を禁止しません。
 
-ただし Architecture Design では、Domain requirement と platform-specific realization の対応関係を明確にします。
+ただしアーキテクチャ設計では、ドメイン要件とプラットフォーム固有の実現方法の対応関係を明確にします。

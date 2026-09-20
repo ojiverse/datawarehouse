@@ -1,54 +1,54 @@
 # Cloudflare Observation アーキテクチャ
 
-本ディレクトリでは、複数の Gateway Instance や HTTP Backfill から届いた Observation を、Cloudflare R2 上の Observation Archive へ高耐久かつコスト効率よく永続化する書き込みパスを定義する。
+本ディレクトリでは、Gateway、HTTP Backfill、Reconciliation 等の producer が Observation を Cloudflare R2 の Observation Archive へ永続化する write path を定義する。
 
-## 複数 Producer を前提とする書き込みパス
+## Direct-to-R2 を標準とする
 
-Observation Archive への write path は、単一の Gateway runtime を前提にしない。
+Observation Archive の write path では Cloudflare Queues を durability boundary にしない。
 
-Cloudflare 上の Gateway Instance、将来の Raspberry Pi 上の Gateway Instance、HTTP Backfill、Reconciliation など、複数の producer が同時に Observation を送信できる構成とする。
+Cloudflare 内の producer は Observation を R2 へ直接 commit する。
 
-共通の write path を通過しても、Gateway Instance、Discord Gateway Session、shard assignment、sequence、Backfill run などの provenance を失ってはならない。
+Cloudflare 外の producer は authenticated ingest Worker を経由し、Worker が R2 commit を完了してから成功応答を返す。
 
-複数 Gateway Session が同じ Discord 上の出来事を並行して観測した場合、write path では無理に一つへ統合せず、それぞれの Observation を保存する。
+これにより Queue retention、message size、retry exhaustion、DLQ retention を Source of Evidence の correctness から排除する。
 
-## R2 永続化とバッチ集約
+詳細は [archive-write-path.md](archive-write-path.md) に定義する。
 
-Observation Archive の物理基盤として Cloudflare R2 を採用する。
+## Durable Acceptance
 
-大量の小さな object を無条件に生成すると operation 数が増えるため、Observation を一定単位で batch 化して R2 へ保存する。
+Cloudflare architecture では **R2 Archive commit の成功そのものを Durable Acceptance** とする。
 
-```mermaid
-flowchart LR
-    G1[Gateway Instance A] --> Q[Observation Queue]
-    G2[Gateway Instance B] --> Q
-    HTTP[HTTP Backfill] --> Q
-    Q --> Consumer[Archive Writer]
-    Consumer --> R2[(R2 Observation Archive)]
-```
+source progress、Backfill cursor、Gateway accepted sequence は R2 commit 成功前に前進させない。
 
-Batching は保存効率のための infrastructure concern であり、Observation の identity や provenance の境界を変えない。
+commit 結果が不明な場合は retry / replay により duplicate 側へ倒す。
 
-具体的な batch size、圧縮形式、object format、object layout は詳細設計で確定する。
+## Object Granularity
 
-## Durable Acceptance と At-least-once
+現行 baseline は **1 Observation = 1 R2 object** とする。
 
-Observation の R2 保存処理は、後段の Canonical Store への正規化処理の成否に依存させない。
+小 object の operation cost を理由に、初期設計から batching を correctness path へ導入しない。
 
-Producer が Observation を再試行可能な durable handoff へ正常に引き渡した時点を、Cloudflare 上の **Durable Acceptance** 境界とする。
+将来 batching / compaction が必要になっても Observation identity は物理 object から独立しているため、domain contract は変更しない。
 
-Durable Acceptance 後は、Archive Writer が retry を含めて Observation Archive への **At-least-once** 配送を実現する。R2 への書き込み成功を確認するまで配送責務を完了したとみなさない。
+## Multi-producer Provenance
 
-At-least-once の結果として、同じ source delivery が複数回 R2 へ到達することを許容する。複数 Gateway Session が同じ Discord 上の出来事を観測した場合の重複とは区別して扱う。
+同じ Discord 上の出来事を複数 producer が観測することを正常状態とする。
 
-Observation が Archive の durable boundary を越えた後に Canonical processing が失敗しても、保存済み Observation から再処理できることを保証する。
+write path では semantic deduplication を行わず、各 Observation の provenance を保持して保存する。
 
-Queue 等の durable handoff は配送責務を保持するための mechanism であり、長期的な source of evidence ではない。Observation Archive への durable commit が完了した後の長期保存保証は R2 が担う。
+Canonical reconciliation は Processing の責務とする。
 
-## 分割予定の詳細設計
+## Failure Isolation
 
-* **Archive Write Path**: Durable Acceptance から R2 durable commit までの At-least-once 配送境界
-* **Observation Batching**: batch size、待機時間、圧縮、object format
-* **Object Layout**: R2 prefix と replay traversal
-* **Multi-producer Provenance**: 複数 Gateway と HTTP producer の provenance 保持
-* **Retry & Duplicate Handling**: source-local retry と cross-session duplicate の扱い
+Canonical Store、R2 Data Catalog、Pipelines、Query 等の障害は Observation Archive write を阻害してはならない。
+
+Observation Archive が durable commit された後の downstream processing はいつでも replay / rebuild 可能とする。
+
+## 詳細設計
+
+* [archive-write-path.md](archive-write-path.md): direct R2、conditional put、payload size、外部 producer
+
+## 今後分割する詳細設計
+
+* **Archive Compaction**: 実測で必要になった場合の immutable segment 化
+* **External Ingest Authentication**: Cloudflare 外 producer の credential / admission

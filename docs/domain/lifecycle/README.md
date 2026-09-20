@@ -37,6 +37,10 @@ Deletion requirement を満たすため、対象ユーザーに紐づく API Dat
 
 これらがプラットフォーム固有の実装から独立して保たれている限り、背後の基盤インフラの進化や移行にかかわらず、DWH としての継続的運用が可能となる。
 
+## 詳細設計
+
+* [erasure.md](erasure.md): 明示的 user data deletion の Archive rewrite、Derived Data purge、再取り込み防止
+
 ## 分割予定の詳細設計
 
 * **Retention Policy**: Observation Archive および Canonical Store の保存期間とアーカイブ階層化

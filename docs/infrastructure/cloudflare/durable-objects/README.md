@@ -1,25 +1,58 @@
 # Cloudflare Durable Objects インフラ設計
 
-本ディレクトリでは、Discord Gateway の常時 WebSocket 接続およびセッション状態を Cloudflare 上で排他的に維持するための Durable Objects（DO）のインフラ構成、名前空間、およびキャパシティ設計を定義する。
+本ディレクトリでは、Cloudflare 上の Gateway Instance が所有する Discord Gateway Session を維持するための Durable Objects（DO）のインフラ構成、名前空間、およびキャパシティ設計を定義する。
 
-## 名前空間とインスタンスキー設計
+## 名前空間とインスタンス識別
 
-Discord Gateway の単一シャード接続を確実に 1 つのインスタンスでホストするため、以下のキー設計を採用する。
+Durable Object は Discord shard 全体の唯一の owner ではなく、**Cloudflare 上の1つの Gateway Instance が持つ1つの Gateway Session の owner** として扱う。
 
-* **Namespace**: `GATEWAY_SESSION`
-* **Instance Key 規則**: 初期フェーズでは `shard:0`（単一シャード構成）を固定キーとして使用する。将来的にギルド数増加に伴いシャード分割が必要になった場合は、`shard:{shard_id}` として動的にインスタンスを分散配置可能な構造とする。
+同じ shard assignment に対して、別 Gateway Instance が並行して存在することを許容する。
 
-## リソース消費とコスト適合性（Included Usage）
+そのため DO の instance identity は shard ID だけでは一意化せず、少なくとも Gateway Instance と shard assignment を区別できなければならない。
 
-Cloudflare Workers Paid プランでは、一定量の Durable Objects Duration（GB-s）およびリクエスト数が基本料金に含まれる。
+具体的な instance key format は詳細設計で決定する。
 
-* **Duration の試算**: 
-  * 1 インスタンスが 128MB メモリで 24 時間 365 日常時稼働した場合、月間の消費量は約 `0.125 GB × 86,400 秒 × 30 日 ≈ 324,000 GB-s` となる。
-  * これは Workers Paid プランに含まれる枠（Included Duration: 400,000 GB-s）内に収まる計算であり、1 シャードの常時接続であれば追加の従量課金なしで維持可能である。
-* **ベータでの実測検証**: 実際のメモリ使用量推移および WebSocket アイドル時の挙動を Beta 環境でプロファイリングし、試算の妥当性を検証する。
+```mermaid
+flowchart TD
+    CF1[Cloudflare Gateway Instance A]
+    CF2[Cloudflare Gateway Instance B]
+    DO1[Durable Object A]
+    DO2[Durable Object B]
+    S1[Discord Session A]
+    S2[Discord Session B]
+    Shard[同一 Shard Assignment]
 
-## インフラ設計における確定事項
+    CF1 --> DO1 --> S1 --> Shard
+    CF2 --> DO2 --> S2 --> Shard
+```
 
-* **トランザクションストレージの書き込み制御**: セッション ID やシーケンス番号の保存頻度を最適化し、DO Storage の書き込みクォータ超過およびコスト増を回避する。
-* **Alarm API の実行頻度**: ハートビート（約41.25秒間隔）送信タイマーとして Alarm を使用した際のアラーム実行クォータの管理。
-* **ダウンタイム最小化マイグレーション**: Worker スクリプト更新時や DO クラスのマイグレーション時における、WebSocket 切断と新インスタンス起動のハンドオフ手順。
+Raspberry Pi など Cloudflare 外の Gateway Instance は、この DO namespace の管理対象ではない。
+
+## Session State
+
+各 DO は自身が所有する Discord Session の Resume に必要な state を保持する。
+
+別 Gateway Instance の Session state を共有したり、Cloudflare から別 runtime への移行時に Session state を移植することは前提としない。
+
+移行時は新 Gateway Instance が独立 Session を開始し、並行観測後に旧 Instance を停止する。
+
+## リソース消費とコスト
+
+Cloudflare 上で常時稼働する Gateway Instance 数に応じて Durable Objects Duration が増加する。
+
+1つの Cloudflare Gateway Instance を常時稼働させる場合のコスト試算は引き続き基準値として利用する。
+
+移行期間に Cloudflare 上で複数 Instance を重ねる場合や、将来 Cloudflare 内で常時冗長化する場合は、Instance 数に応じた追加消費を capacity planning に含める。
+
+Cloudflare 外の Gateway Instance は Durable Objects Duration を消費しない。
+
+## 設計時に確定する事項
+
+* Gateway Instance identity と DO instance key の対応
+* Shard assignment との対応
+* Session state の永続化境界
+* Storage usage
+* Liveness mechanism
+* Deployment 時の新旧 Instance overlap
+* Environment 分離
+* Resource monitoring

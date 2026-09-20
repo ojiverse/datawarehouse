@@ -8,6 +8,8 @@ Observation は、分析用モデル（Canonical Data）へ変換される前段
 
 リアルタイムに受信した Gateway イベントおよび HTTP API クロールにより取得したレスポンスの双方が Observation として記録される。
 
+保存対象は [Product Policy](../product-policy/README.md) に従う。DWH-public scope の durable community activity は将来の利用有無にかかわらず原則保存し、Presence、Typing、Voice State のような deliberate absence は Observation Archive に取り込まない。
+
 ## 取得経路（Provenance）の厳格な分離
 
 HTTP Backfill によって取得されたメッセージを、未受信の Gateway イベント（`MESSAGE_CREATE` 等）として偽装・変換することを禁じる。

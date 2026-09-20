@@ -49,6 +49,7 @@ flowchart TD
 
 ドメイン設計は関心事ごとに以下のサブシステムに分割される。
 
+* [product-policy/](product-policy/README.md): Product Owner が確定した利用目的、認可、Retention / Deletion、収集範囲、State Semantics
 * [ingestion/](ingestion/README.md): Gateway からリアルタイムにイベントを受信するためのセッション状態と配送保証
 * [observations/](observations/README.md): 取得した生の観測事実、来歴（Provenance）、および重複のセマンティクス
 * [canonical-store/](canonical-store/README.md): 長期的なクエリ・分析に適した正規化データモデルとスキーマ進化の原則
@@ -65,3 +66,5 @@ flowchart TD
 2. **Provenance の不変性**: いかなるデータも取得経路および観測時刻を偽ってはならない。HTTP Backfill で取得したメッセージを、観測していない Gateway イベント（`MESSAGE_CREATE` 等）として偽装することを禁じる。
 3. **完全性保証の明確な区別**: リアルタイムな中間編集・削除まで観測可能な Gateway 履歴と、取得時点の最新スナップショットしか得られない HTTP Backfill では、復元できる履歴の完全性が本質的に異なることを前提とする。
 4. **Current State の非特権化**: Canonical Store は特定データベースの更新可能レコードとして固定化せず、観測履歴から導出可能なプロジェクションとして設計する。
+5. **Product Policy の優先**: 収集・利用・保持・削除・認可・State Semantics は [Product Policy](product-policy/README.md) に従い、実装者が技術的都合で再定義してはならない。
+6. **Best-known state**: Current / Historical State は Discord の完全な真実ではなく、保存済み Observation から deterministic に導出可能な best-known state とする。

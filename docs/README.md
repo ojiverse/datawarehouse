@@ -2,7 +2,7 @@
 
 このディレクトリは、OJIverse Data Warehouse の設計文書群の総合エントリポイントです。
 
-本プロジェクトでは、Discord DWH としての概念定義から具体的な Cloudflare リソースの構成までを段階的に開示（Progressive Disclosure）し、将来のプラットフォーム移行や長期運用に耐えうる文書構造を採用しています。
+本プロジェクトでは、設計思想から Discord DWH としての概念定義、そして具体的な Cloudflare リソースの構成までを段階的に開示（Progressive Disclosure）し、将来のプラットフォーム移行や長期運用に耐えうる文書構造を採用しています。
 
 ## 文書体系と関心事の分離
 
@@ -11,32 +11,28 @@
 ```mermaid
 flowchart TD
     Root[docs/README.md]
-    Principles[エンジニアリング原則<br>engineering-principles/]
-    Policy[設計ポリシー<br>design-policy/]
+    Philosophy[設計思想と原則<br>philosophy/]
     Domain[ドメイン設計<br>domain/]
     Arch[アーキテクチャ設計<br>architecture/]
     Infra[インフラストラクチャ設計<br>infrastructure/]
     ADR[意思決定記録<br>adr/]
     Runbooks[運用手順書<br>runbooks/]
 
-    Root --> Principles
-    Root --> Policy
+    Root --> Philosophy
     Root --> Domain
     Root --> Arch
     Root --> Infra
     Root --> ADR
     Root --> Runbooks
 
-    Principles -.適用.-> Policy
-    Policy -.準拠.-> Domain
+    Philosophy -.思考の基盤.-> Domain
     Domain -.実現方法.-> Arch
     Arch -.リソース配置.-> Infra
 ```
 
 | 分類 | 格納ディレクトリ | 主な責務と対象 | クラウド固有情報の扱い |
 | :--- | :--- | :--- | :--- |
-| **エンジニアリング原則** | [engineering-principles/](engineering-principles/README.md) | 不変条件、事実源、型、不変性など、長期運用に耐えうる普遍的な設計原則 | **完全非依存**（アーキテクチャ思考の共通基盤） |
-| **設計ポリシー** | [design-policy/](design-policy/README.md) | 原則をデータソース追加や「現在の確実性レベル」に適用した具体的ポリシー | **完全非依存**（設計チェックリストを提供） |
+| **設計思想と原則** | [philosophy/](philosophy/README.md) | 開発姿勢、課題解決の急所（支配的要因）、不変条件、事実源、型、不変性、設計ポリシー | **完全非依存**（アーキテクチャと思考の共通基盤） |
 | **ドメイン設計** | [domain/](domain/README.md) | Discord DWH の意味論、エンティティ定義、データ整合性、復旧規則 | **原則禁止**（特定インフラに依存しない不変の要求を記述） |
 | **アーキテクチャ設計** | [architecture/](architecture/README.md) | ドメイン要求を Cloudflare の能力・制約下で実現するコンポーネント構成 | **採用技術の方針のみ**（Worker, Durable Objects, R2 などの責務分担） |
 | **インフラストラクチャ設計** | [infrastructure/](infrastructure/README.md) | 実際のリソース定義、環境分離、バインディング、権限、コスト試算 | **完全許容**（Cloudflare の具体的な設定や制限値を詳細化） |
@@ -50,14 +46,14 @@ flowchart TD
 ```mermaid
 flowchart TD
     Topic[新しい設計上の関心事]
-    IsPrinciple{普遍的な設計思想や<br>設計ポリシーに関する内容か？}
+    IsPhilosophy{普遍的な設計思想や<br>エンジニアリング原則に関する内容か？}
     IsDomain{Discord DWH としての<br>意味・状態・保証に関する内容か？}
     IsArch{特定プラットフォーム上での<br>コンポーネント構成や実現方法か？}
     IsInfra{具体リソース・環境・権限・<br>コストに関する設定か？}
 
-    Topic --> IsPrinciple
-    IsPrinciple -->|はい| Principle[engineering-principles/ または design-policy/]
-    IsPrinciple -->|いいえ| IsDomain
+    Topic --> IsPhilosophy
+    IsPhilosophy -->|はい| Philosophy[philosophy/]
+    IsPhilosophy -->|いいえ| IsDomain
     IsDomain -->|はい| Domain[domain/]
     IsDomain -->|いいえ| IsArch
     IsArch -->|はい| Arch[architecture/]

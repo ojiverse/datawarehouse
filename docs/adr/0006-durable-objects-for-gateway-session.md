@@ -1,6 +1,6 @@
 # ADR-0006: Discord Gateway のセッション管理に Durable Objects を採用する方針
 
-* **ステータス**: 承認（Accepted）
+* **ステータス**: 一部置換（Partially Superseded by ADR-0007）
 * **決定日**: 2026-09-20
 * **対象領域**: アーキテクチャ設計 / インフラストラクチャ設計
 

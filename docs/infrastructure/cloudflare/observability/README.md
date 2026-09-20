@@ -1,4 +1,4 @@
-# Cloudflare Observability
+# Cloudflare オブザーバビリティ
 
 Cloudflare 上で稼働する Discord DWH の log、metric、alert の infrastructure を扱います。
 
@@ -16,7 +16,7 @@ Cloudflare 上で稼働する Discord DWH の log、metric、alert の infrastru
 - Error rate
 - Resource quota
 
-何を failure と判断するかは Architecture Design で定義し、ここではそれを観測する具体的な infrastructure を設計します。
+何を failure と判断するかはアーキテクチャ設計で定義し、ここではそれを観測する具体的なインフラストラクチャを設計します。
 
 ## 設計時に確定する事項
 

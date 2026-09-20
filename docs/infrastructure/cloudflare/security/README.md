@@ -1,4 +1,4 @@
-# Cloudflare Security
+# Cloudflare セキュリティ
 
 Discord DWH の Cloudflare resource に関する credential、permission、secret の設計を扱います。
 

@@ -1,8 +1,8 @@
-# Cloudflare Deployment
+# Cloudflare デプロイ
 
 Cloudflare resource と application の deployment、upgrade、migration を扱います。
 
-## Scope
+## 対象
 
 - Environment ごとの deployment
 - Worker deployment

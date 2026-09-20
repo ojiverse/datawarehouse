@@ -23,3 +23,4 @@
 | [0005](0005-cloudflare-as-primary-platform.md) | **主要基盤としての Cloudflare 採用** | 低コスト運用、R2 の転送量無料、Durable Objects の WebSocket 統合性を評価 | 承認（Accepted） |
 | [0006](0006-durable-objects-for-gateway-session.md) | **Gateway 管理への Durable Objects 採用** | Cloudflare 上の Gateway Session の所有と Resume 状態管理に Durable Objects を採用 | 一部置換（ADR-0007） |
 | [0007](0007-multiple-gateway-instances.md) | **複数 Gateway Instance の並行稼働** | 同一 shard を複数の独立 Session が観測できる observer fleet として Gateway をモデル化 | 承認（Accepted） |
+| [0008](0008-product-policy.md) | **OJIverse DWH の Product Policy** | 長期記憶基盤、community-wide corpus、無期限保持、Collection Policy、best-known state を Product Owner 判断として固定 | 承認（Accepted） |

@@ -1,71 +1,65 @@
 # Cloudflare 取り込みアーキテクチャ（Ingestion）
 
-本ディレクトリでは、Discord Gateway との WebSocket 接続を Cloudflare 上で維持し、受信したイベントを Observation として後続へ安全に引き渡すアーキテクチャを定義する。
+本ディレクトリでは、Discord Gateway との WebSocket 接続を Cloudflare 上で維持し、Dispatch を Observation Archive へ安全に永続化するアーキテクチャを定義する。
 
-## Cloudflare Gateway Instance と Durable Objects
+## Gateway Session Owner
 
-Cloudflare 上で動作する Gateway Instance では、1つの Discord Gateway Session を単一の runtime owner が管理する必要がある。
+Cloudflare 上の1 Gateway Instance が所有する1 Discord Gateway Session の stateful owner に Durable Object を使用する。
 
-この Session 単位の所有と再開可能な状態管理を実現するため、Cloudflare 上の Gateway Instance には Durable Objects（DO）を採用する。
+同じ shard assignment を別 Gateway Instance が並行して観測することを許容し、DO を shard 全体の唯一 owner とはみなさない。
 
-DO は「特定 shard を世界で唯一観測する owner」ではない。同じ shard assignment を持つ別 Gateway Instance が、Raspberry Pi や別の Cloudflare instance を含めて並行稼働することを許容する。
+各 Session は独立した session ID と sequence stream を持つ。
 
-```mermaid
-flowchart LR
-    Discord[Discord Gateway]
-    CF[Cloudflare Gateway Instance]
-    Home[別 Gateway Instance]
-    DO[Durable Object]
-    S1[Gateway Session A]
-    S2[Gateway Session B]
+## Received / Accepted Sequence
 
-    CF --> DO
-    DO --> S1
-    Home --> S2
-    S1 <--> Discord
-    S2 <--> Discord
-```
+Session state は Received Sequence と Accepted Sequence を分離する。
 
-各 Session は独立した `session_id` と `sequence` を持ち、Cloudflare 側の DO は自身が所有する Session の状態だけを管理する。
+Received Sequence は最後に受信した Dispatch sequence であり、接続中の Discord Heartbeat に使用する。
 
-## 再起動と Resume
+Accepted Sequence は R2 Observation Archive への commit が完了した Dispatch の highest contiguous sequence であり、Durable Object SQLite storage に保存する。
 
-Durable Objects は、デプロイや内部メンテナンスに伴い再起動する場合がある。
+Resume cursor には Accepted Sequence を使用する。
 
-Cloudflare Gateway Instance は、自身の Session を Resume するために必要な最小限の情報を durable に保持する。
+詳細な semantics は [domain/ingestion/delivery-semantics.md](../../../domain/ingestion/delivery-semantics.md) に従う。
 
-再起動後は保存された Session state を利用して Discord への Resume を試行する。
+## Archive Write
 
-Invalid Session 等により Resume できない場合は、新規 Session を確立し、未取得区間の修復を Backfill へ委譲する。
+Gateway Dispatch を Cloudflare Queues へ handoff して Durable Acceptance とする構成は採用しない。
 
-Cloudflare から別 Gateway Instance への移行では、Cloudflare Session の state を他 Instance へ移植することを前提としない。新しい Instance が独立 Session を確立し、一定期間並行観測した後に旧 Instance を停止する。
+Gateway Durable Object は Observation Envelope を生成し、R2 Observation Archive へ direct write する。
 
-## Observation への provenance
+R2 commit 成功後にのみ Accepted Sequence を前進させる。
 
-Cloudflare Gateway Instance から downstream へ送る Observation には、少なくとも次の関係を後から追跡できる情報を保持する。
+同じ Session の Dispatch processing は sequence 順に commit し、accepted watermark に gap を作らない。
 
-* Cloudflare 上の Gateway Instance
-* Discord Gateway Session
-* shard assignment
-* Discord が発行した sequence
+Archive write が継続的に失敗して安全な backlog 保持が困難な場合は connection を閉じ、Accepted Sequence から Resume して replay させる。
 
-同じ Discord 上の出来事を他の Gateway Instance も観測している可能性を正常系として扱う。
+## Restart / Resume
 
-## ダウンストリームへの配送とバックプレッシャー
+Session ID、resume gateway URL、Accepted Sequence 等の Resume state は通常処理中に durable storage へ更新する。
 
-DO が受信した Dispatch イベントは、Observation Archive への durable write path へ非同期に引き渡す。
+deployment / shutdown 時の graceful flush に correctness を依存させない。
 
-ストレージの書き込み遅延や一時的な障害が WebSocket 受信ループへ連鎖しないよう failure boundary を設ける。
+R2 commit 後、Accepted Sequence 保存前に crash した場合は Resume replay により duplicate Observation が生じ得る。これは loss より duplicate を選ぶ意図的な failure semantics である。
 
-具体的な Queue topology、batching、retry は Observation Architecture と Infrastructure Design で定義する。
+Resume 不能な Session loss では新しい Session を Identify し、surviving state の回復を HTTP Backfill / Reconciliation へ委譲する。
 
-## 分割予定の詳細設計
+## Runtime Verification
 
-* **Gateway Runtime Ownership**: 1 Gateway Session を所有する DO のライフサイクル
-* **Gateway Instance Identity**: Cloudflare 上の observer identity と shard assignment
-* **Session Persistence**: Resume に必要な state の durable boundary
-* **Heartbeat Runtime**: heartbeat と liveness の runtime 実装
-* **Resume Runtime**: 切断検知から Resume、新規 Session 確立までの状態遷移
-* **Multi-instance Handoff**: 新旧 Gateway Instance の並行稼働と停止条件
-* **Event Handoff**: Observation Archive への非同期引き渡し
-* **Backpressure Strategy**: downstream 遅延時の failure isolation
+Durable Object の outbound WebSocket は hibernation できず、outbound connection が eviction を防ぐ効果にも時間上限がある。
+
+Gateway Beta に入る前に #18 を最優先で実測し、Discord heartbeat と DO lifecycle の組み合わせで長時間 Session を維持できるか確認する。
+
+検証結果により runtime implementation を変更しても、Received / Accepted Sequence の semantics は維持する。
+
+## 外部 Gateway Instance
+
+Cloudflare 外の Gateway Instance は authenticated ingest Worker へ Observation を送信する。
+
+ingest Worker は Envelope validation と R2 commit を完了してから成功応答を返す。外部 producer はこの成功応答を Durable Acceptance とみなす。
+
+## 今後分割する詳細設計
+
+* **Gateway Runtime Verification**: #18 の長時間 connection test
+* **Identify Budget Coordination**: application-wide Session Start Limit
+* **External Ingest Authentication**: non-Cloudflare producer の認証

@@ -1,4 +1,4 @@
-# Observations Domain
+# 観測ドメイン
 
 Observation Archive に保存する「Discord から実際に観測した事実」の意味を定義します。
 
@@ -24,7 +24,7 @@ Observation には少なくとも次の意味情報が必要です。
 - Gateway 由来の場合に session と sequence を追跡できること
 - Backfill 由来の場合に backfill run を追跡できること
 
-具体的な保存形式や object layout は Domain Design では決めません。
+具体的な保存形式や object layout はドメイン設計では決めません。
 
 ## 不変条件
 

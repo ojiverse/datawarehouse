@@ -1,4 +1,4 @@
-# Backfill Domain
+# Backfill ドメイン設計
 
 Discord HTTP API を利用して Observation を取得し、Gateway だけでは得られない既存データや欠損を補う仕組みを扱います。
 

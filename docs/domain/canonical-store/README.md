@@ -1,4 +1,4 @@
-# Canonical Store Domain
+# Canonical Store ドメイン設計
 
 Discord から得た Observation を、長期的に分析可能な一貫したデータモデルへ変換した Canonical Data を扱います。
 
@@ -28,7 +28,7 @@ Current State を唯一の保存形式とはしません。
 
 Message の編集や削除、HTTP snapshot など複数の観測から、必要な時点の状態を projection として求められる設計を目指します。
 
-## Schema Evolution
+## スキーマ進化
 
 5〜10年の運用を想定し、Discord API の変化と Canonical schema の変化を前提とします。
 

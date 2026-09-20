@@ -1,8 +1,8 @@
-# Cloudflare Ingestion Architecture
+# Cloudflare 取り込みアーキテクチャ
 
-Discord Gateway の Domain requirement を Cloudflare runtime 上で実現する方法を扱います。
+Discord Gateway のドメイン要件を Cloudflare runtime 上で実現する方法を扱います。
 
-## Scope
+## 対象
 
 - Gateway connection の所有単位
 - Gateway session state の保持
@@ -20,14 +20,14 @@ Cloudflare Durable Objects はこの capability の主要候補です。
 
 ただし、具体的な state machine、durable boundary、sequence の確定タイミングなどは今後の詳細設計で決定します。
 
-## Non-scope
+## 対象外
 
 - Durable Object namespace の具体名
 - Worker binding
 - environment ごとの instance 構成
 - cost budget
 
-これらは Infrastructure Design で扱います。
+これらはインフラストラクチャ設計で扱います。
 
 ## 今後分割する詳細設計
 

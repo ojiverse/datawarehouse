@@ -1,65 +1,60 @@
 # Cloudflare Backfill アーキテクチャ
 
-本ディレクトリでは、Discord HTTP API を利用して過去ログや欠損区間のデータを巡回取得する Backfill エンジンを、Cloudflare 上で成立させるアーキテクチャを定義する。
+本ディレクトリでは、Discord HTTP API を利用して過去ログや欠損区間を取得する Backfill を Cloudflare 上で中断・再開可能に実行するアーキテクチャを定義する。
 
-## Queue と Durable Progress の責務分離
+## 実行モデル
 
-Backfill は Cloudflare Queues を利用してページ単位の処理を非同期実行できる。
+first-MVP の Backfill coordination には SQLite-backed Durable Objects を採用する。
 
-ただし Queue message は一時的な execution trigger であり、Backfill run の進行状態の唯一の事実源にはしない。
+stateless Worker は認証、入力検証、run 開始、status 取得等の API boundary を担当する。
 
-各 run は、中断後に復元可能な durable progress ledger を持つ。
+各 Channel の stateful execution は Channel 単位の Durable Object が所有し、同一 Channel の active run を直列化する。
 
-```mermaid
-flowchart TD
-    Start[Backfill Run 開始]
-    Ledger[Durable Progress]
-    Queue[Cloudflare Queues]
-    Worker[Backfill Worker]
-    Discord[Discord HTTP API]
-    Archive[Observation Archive]
+Durable progress は Durable Object SQLite storage に保存し、Queue message や process memory を progress authority にしない。
 
-    Start --> Ledger
-    Ledger --> Queue
-    Queue --> Worker
-    Worker --> Discord
-    Discord --> Worker
-    Worker --> Archive
-    Worker --> Ledger
-    Ledger --> Queue
-```
+詳細は [execution.md](execution.md) に定義する。
 
-Worker は durable progress から取得対象と現在位置を確認し、1つの処理単位を実行する。
+## Continuation
 
-取得結果を Observation Archive へ引き渡した後、durable progress を更新する。
+長時間 run の self-continuation には Durable Object Alarm を使用する。
 
-Queue message が expiry、retry、consumer restart 等で失われても、未完了 run を durable progress から再発見し、再度実行できる構成とする。
+Alarm は at-least-once execution であるため、各 execution step は再実行可能に設計する。
 
-## Progress Storage
+1 invocation で run 全体を完走させず、bounded な page 処理単位で progress を commit して次の Alarm を設定する。
 
-Durable progress を D1 に置くことは必須としない。
+## Archive Write
 
-Durable Objects Storage、R2 上の run manifest、その他の Cloudflare capability を候補として、更新頻度、競合制御、復旧性、コストを比較して決定する。
+Backfill が取得した HTTP response page は Observation Envelope v1 として R2 Observation Archive へ直接保存する。
 
-具体的な storage mechanism が未確定でも、Queue だけを progress authority にしないことは確定要件とする。
+Cloudflare Queues は first-MVP の Archive write path に使用しない。
 
-## Discord Rate Limit への追従
+R2 commit が完了した後にのみ Backfill cursor を前進させる。
 
-Discord HTTP API の rate limit は固定値をハードコードした pacing だけに依存せず、Discord から得られる rate-limit information に従って実行を調整する。
+R2 write 後、progress 更新前に runtime が停止した場合は同じ scope を再取得し、新しい Observation として追記する。
 
-Rate limit による一時停止中も durable progress を失わず、再開時に同じ run を継続できることを保証する。
+## Rate Limit
 
-## 定期照合
+Discord route limit は response header と Retry-After に従い、固定 pacing だけに依存しない。
 
-Reconciliation の定期起動には Cloudflare の scheduling capability を利用する。
+Channel-local route bucket state は Backfill Channel Durable Object が保持する。
 
-定期照合は既存の Backfill execution path を再利用するが、長期間の Cold Start run の durable progress を代替しない。
+application 全体の global request ceiling と invalid-request budget は application 単位の Discord HTTP Budget Durable Object が協調する。
 
-## 分割予定の詳細設計
+401 は credential failure、403 は対象 scope の terminal access failure、429 は Retry-After に従う一時停止として扱う。
 
-* **Backfill Execution**: run の開始、処理、完了の状態遷移
-* **Durable Progress Ledger**: progress authority と更新境界
-* **Pagination Continuation**: ページネーション終了判定と次の取得位置
-* **Rate Limit Handling**: retry、backoff、rate-limit coordination
-* **Reconciliation Scheduling**: 定期照合の起動と対象範囲
-* **Backfill Recovery**: Queue message 消失や runtime restart からの再開
+## Reconciliation
+
+Reconciliation は既存の Backfill execution path を再利用する。
+
+直近 scope を HTTP で再観測し、Archive や Canonical と事前比較せず新しい Observation として追記する。
+
+重複は Processing の deterministic projection で収束させる。
+
+## 詳細設計
+
+* [execution.md](execution.md): Durable Object ownership、progress、Alarm、page commit order、rate-limit coordination
+
+## 今後分割する詳細設計
+
+* **Gap Recovery**: Gateway session loss から Backfill range を決める規則
+* **Reconciliation Scheduling**: 定期実行 interval と target policy

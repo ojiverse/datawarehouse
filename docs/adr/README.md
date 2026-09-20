@@ -24,3 +24,7 @@
 | [0006](0006-durable-objects-for-gateway-session.md) | **Gateway 管理への Durable Objects 採用** | Cloudflare 上の Gateway Session の所有と Resume 状態管理に Durable Objects を採用 | 一部置換（ADR-0007） |
 | [0007](0007-multiple-gateway-instances.md) | **複数 Gateway Instance の並行稼働** | 同一 shard を複数の独立 Session が観測できる observer fleet として Gateway をモデル化 | 承認（Accepted） |
 | [0008](0008-product-policy.md) | **OJIverse DWH の Product Policy** | 長期記憶基盤、community-wide corpus、無期限保持、Collection Policy、best-known state を Product Owner 判断として固定 | 承認（Accepted） |
+| [0009](0009-direct-r2-observation-archive.md) | **Observation Archive の direct-to-R2 化** | Queue を durability path から外し、1 Observation / object の create-only R2 commit を採用 | 承認（Accepted） |
+| [0010](0010-durable-object-backfill-coordination.md) | **Backfill coordination への SQLite DO 採用** | Channel 単位 DO、Alarm、durable progress を採用し ADR-0003 の Queue cursor 部分を置換 | 承認（Accepted） |
+| [0011](0011-pyiceberg-canonical-materializer.md) | **PyIceberg Canonical materializer** | PyIceberg / Parquet Zstd / R2 control manifest による resumable rebuild を採用 | 承認（Accepted） |
+| [0012](0012-gateway-r2-acceptance-watermark.md) | **Gateway R2 acceptance watermark** | Received / Accepted Sequence を分離し、R2 commit 済み watermark から Resume | 承認（Accepted） |

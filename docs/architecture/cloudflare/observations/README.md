@@ -31,19 +31,23 @@ Batching は保存効率のための infrastructure concern であり、Observat
 
 具体的な batch size、圧縮形式、object format、object layout は詳細設計で確定する。
 
-## Durability First
+## Durable Acceptance と At-least-once
 
 Observation の R2 保存処理は、後段の Canonical Store への正規化処理の成否に依存させない。
 
+Producer が Observation を再試行可能な durable handoff へ正常に引き渡した時点を、Cloudflare 上の **Durable Acceptance** 境界とする。
+
+Durable Acceptance 後は、Archive Writer が retry を含めて Observation Archive への **At-least-once** 配送を実現する。R2 への書き込み成功を確認するまで配送責務を完了したとみなさない。
+
+At-least-once の結果として、同じ source delivery が複数回 R2 へ到達することを許容する。複数 Gateway Session が同じ Discord 上の出来事を観測した場合の重複とは区別して扱う。
+
 Observation が Archive の durable boundary を越えた後に Canonical processing が失敗しても、保存済み Observation から再処理できることを保証する。
 
-Retry によって同じ source delivery が再送された場合や、複数 Gateway が同じ出来事を観測した場合は重複を許容する。
-
-Queue 自体を source of evidence とせず、Queue の retention や retry 状態を Observation の長期保存保証にしない。
+Queue 等の durable handoff は配送責務を保持するための mechanism であり、長期的な source of evidence ではない。Observation Archive への durable commit が完了した後の長期保存保証は R2 が担う。
 
 ## 分割予定の詳細設計
 
-* **Archive Write Path**: Observation 受理から R2 durable commit までの境界
+* **Archive Write Path**: Durable Acceptance から R2 durable commit までの At-least-once 配送境界
 * **Observation Batching**: batch size、待機時間、圧縮、object format
 * **Object Layout**: R2 prefix と replay traversal
 * **Multi-producer Provenance**: 複数 Gateway と HTTP producer の provenance 保持

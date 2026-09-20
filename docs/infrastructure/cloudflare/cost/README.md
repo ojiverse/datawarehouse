@@ -1,35 +1,51 @@
 # Cloudflare コストとキャパシティ設計
 
-本ディレクトリでは、Discord DWH を Cloudflare 上で運用する際に発生するインフラストラクチャ費用、利用枠、およびコスト最適化とデータ耐久性のトレードオフ原則を定義する。
+本ディレクトリでは Discord DWH の Cloudflare resource consumption を評価する基準と、コスト最適化が correctness を侵食しないための原則を定義する。
 
-## プラン選定と基準構成
+## 基準構成
 
-本番環境では、WebSocket 常時接続とバックグラウンドタスクの安定実行のため、Workers Paid プランを基本契約として採用する。
+Production では Workers Paid を基準構成とする。
 
-コスト試算の基準構成は、**Cloudflare 上で常時稼働する Gateway Instance が1つ**の状態とする。
+ただし Gateway runtime の最終構成は #18 の Beta verification 後に確定し、Cloudflare 外 Gateway Instance を併用できる。
 
-Discord shard 数と Gateway Instance 数は同一概念ではない。同じ shard assignment を複数 Gateway Instance が並行して観測できるため、Durable Objects の capacity は shard 数だけでなく Cloudflare 上の Gateway Instance 数を基準に評価する。
+## 主な Cost Driver
 
-## 複数 Gateway とコスト
+* Observation Archive の R2 PUT 数と保存容量
+* Backfill Channel Durable Object の request / SQLite operation
+* Gateway Instance ごとの Durable Object duration / request
+* Canonical Parquet / Iceberg の R2 storage
+* R2 SQL の query / scan usage
+* Reconciliation の HTTP / R2 write 頻度
 
-Raspberry Pi 等の Cloudflare 外 Gateway Instance を追加しても、その Instance 自体は Cloudflare Durable Objects Duration を消費しない。
+Archive は1 Observation = 1 object を correctness baseline とするため、R2 PUT 数を継続的に実測する。
 
-Cloudflare 上で新旧 Gateway Instance を一時的に並行稼働させる場合は、その overlap 期間だけ Durable Objects の消費が増加する。
+operation cost が支配的要因になった場合のみ、domain identity を保った immutable compaction / segment 化を再設計する。
 
-Cloudflare 内で複数 Gateway Instance を常時 active にする場合は、Workers Paid の included usage に収まることを前提にせず、Instance 数と実測 duration に基づいて追加コストを評価する。
+コスト削減だけを理由に source payload を drop、truncate、sample、overwrite してはならない。
 
-## コストと耐久性に関する基本不変条件
+## Durable Objects
 
-* **耐久性の犠牲によるコスト削減の禁止**: コスト削減のみを理由として Observation Archive の保存や回復経路を省略しない
-* **複数 Gateway の許容**: コストを理由に Gateway Instance の並行稼働という domain capability 自体を禁止しない
-* **トレードオフの明文化**: 保証レベルや常時冗長化方針を変更する場合は、アーキテクチャ設計および ADR に根拠を記録する
+Gateway cost は shard 数ではなく Cloudflare 上で active な Gateway Instance / Session owner 数を基準に評価する。
 
-## ベータ期間での実測検証項目
+Backfill cost は同時に active な Channel DO と crawl frequency を基準にする。
 
-* Gateway Instance 1つあたりの Durable Objects Duration
-* 新旧 Cloudflare Gateway Instance を overlap させた場合の追加消費
-* Queue の batch size に応じた R2 operation 数
-* R2 SQL のデータ走査量
-* Backfill と reconciliation の実行頻度による Workers / Queues 使用量
+Raspberry Pi 等の Cloudflare 外 Gateway Instance 自体は Durable Object duration を消費しない。
 
-具体的な単価と included quota は Cloudflare の料金体系変更に追従して更新する。
+## Queue
+
+first-MVP の core path に Queue cost は存在しない。
+
+将来 incremental Canonical trigger に Queue を導入した場合のみ operation / retention / DLQ cost を追加評価する。
+
+## Canonical
+
+PyIceberg materializer を外部 runtime で実行する場合、その compute cost を Cloudflare cost と分離して記録する。
+
+R2 Data Catalog の managed compaction / snapshot expiration を優先し、独自 maintenance compute の重複を避ける。
+
+## 不変条件
+
+* Observation Archive の durability をコスト最適化より優先する
+* Product Policy の collection scope をコストだけで縮小しない
+* コスト変更で保証レベルを変える場合は ADR を残す
+* 単価 / included quota の具体値は Cloudflare pricing の変更に追従して更新する

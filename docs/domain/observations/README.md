@@ -52,10 +52,14 @@ Gateway 由来の `session_id` と `sequence` は、その Gateway Session 内�
 * **Source-local な重複と意味的な重複の分離**: At-least-once retry や同一 Session の再送による source-local duplicate と、異なる Session が同じ出来事を観測した semantic duplicate を同じ問題として扱わない
 * **追跡可能性の保証**: Canonical Data から、その状態の根拠となった Observation 群と元の取得経路まで辿れること
 
-## 分割予定の詳細設計
+## 詳細設計
 
-* **Observation Envelope**: ペイロードを内包する共通エンベロープと version 境界
-* **Observation Identity**: Observation ID が担う一意性と採番要件
+* [identity.md](identity.md): UUIDv7 Observation ID、Discord Snowflake、Source Delivery Identity、Run Identity
+* [envelope.md](envelope.md): Observation Envelope v1、HTTP page / Gateway frame、Provenance と observed time
+
+## 今後分割する詳細設計
+
+* **Observation Identity Evolution**: identity contract の将来変更と migration
 * **Discord Entity Identity**: Snowflake の無損失な保持と Canonical への変換規則
 * **Source Delivery Identity**: Gateway Session 内および HTTP 取得内の再送・重複追跡
 * **Gateway Provenance**: Gateway Instance、Session、shard、sequence の関係

@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ojiverse-dwh-backfill",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "dev",
+    "DISCORD_API_BASE_URL": "https://discord.com/api/v10",
+    "DISCORD_API_VERSION": "10",
+    "DISCORD_MESSAGE_CONTENT_ENABLED": "true",
+    "BACKFILL_PAGES_PER_ALARM": "5",
+    "BACKFILL_PAGE_LIMIT": "100",
+    "DISCORD_GLOBAL_REQUESTS_PER_SECOND": "50",
+    "DISCORD_INVALID_REQUEST_BUDGET": "10000",
+    "DISCORD_INVALID_REQUEST_WINDOW_SECONDS": "600"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "BACKFILL_CHANNEL", "class_name": "BackfillChannelDurableObject" },
+      { "name": "DISCORD_HTTP_BUDGET", "class_name": "DiscordHttpBudgetDurableObject" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BackfillChannelDurableObject", "DiscordHttpBudgetDurableObject"]
+    }
+  ],
+  "r2_buckets": [{ "binding": "OBSERVATIONS", "bucket_name": "ojiverse-dwh-observations-dev" }],
+  "observability": { "enabled": true },
+  "env": {
+    "dev": {
+      "vars": { "ENVIRONMENT": "dev" },
+      "durable_objects": {
+        "bindings": [
+          { "name": "BACKFILL_CHANNEL", "class_name": "BackfillChannelDurableObject" },
+          { "name": "DISCORD_HTTP_BUDGET", "class_name": "DiscordHttpBudgetDurableObject" }
+        ]
+      },
+      "r2_buckets": [{ "binding": "OBSERVATIONS", "bucket_name": "ojiverse-dwh-observations-dev" }]
+    }
+  }
+}

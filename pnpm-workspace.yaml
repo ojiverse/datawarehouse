@@ -1,0 +1,10 @@
+packages:
+  - "workers/*"
+
+# esbuild and workerd need their postinstall to place platform binaries; nothing else may run scripts.
+allowBuilds:
+  esbuild: true
+  workerd: true
+
+minimumReleaseAgeExclude:
+  - "@cloudflare/workers-types@5.20260921.1"

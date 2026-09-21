@@ -68,7 +68,13 @@ Domain semantics の Source of Truth は docs/domain 配下の設計文書であ
 * Canonical Iceberg schema
 * HTTP / RPC boundary が必要な場合の versioned request / response contract
 
-Go と TypeScript の双方で扱う永続 contract には共通 fixture による compatibility test を持たせる。
+Go と TypeScript の双方で扱う永続 contract は [Cross-language Data Contract](data-contracts.md) に従う。
+
+Observation Envelope v1 の物理 wire contract は `contracts/observation-envelope/v1/schema.json` を Source of Truth とし、Go / TypeScript の struct / type はその implementation artifact とする。
+
+versioned fixture を両言語の compatibility test で共有する。
+
+Observation Archive の schema 共有だけを目的に Protobuf / ProtoJSON を導入しない。将来明示的な RPC boundary が必要になった場合は Protobuf / Connect 等を別責務として検討する。
 
 一方の implementation detail を他方が暗黙に知る設計を避ける。
 

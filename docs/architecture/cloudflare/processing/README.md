@@ -51,6 +51,7 @@ Pipelines を停止・廃止しても standalone Iceberg materializer で Canoni
 ## 詳細設計
 
 * [materialization.md](materialization.md): iceberg-go technical gate、rebuild manifest、checkpoint、Iceberg commit
+* [iceberg-spike-result.md](iceberg-spike-result.md): #36 technical spike の実測記録（local reference と R2 real environment）
 
 ## 今後分割する詳細設計
 

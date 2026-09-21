@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ojiverse/datawarehouse/contracts/observation-envelope/v1/schema.json",
+  "title": "OJIverse Observation Envelope v1",
+  "type": "object",
+  "required": [
+    "envelope_version",
+    "observation_id",
+    "source_kind",
+    "observed_at",
+    "payload",
+    "provenance"
+  ],
+  "properties": {
+    "envelope_version": {
+      "const": "v1"
+    },
+    "observation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "http_backfill",
+        "http_reconciliation",
+        "gateway"
+      ]
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {},
+    "provenance": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source_kind": {
+            "enum": [
+              "http_backfill",
+              "http_reconciliation"
+            ]
+          }
+        },
+        "required": [
+          "source_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "array"
+          },
+          "provenance": {
+            "$ref": "#/$defs/http_provenance"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nullable_snowflake": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]+$"
+    },
+    "http_provenance": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "discord_api_version",
+        "guild_id",
+        "channel_id",
+        "operation",
+        "endpoint",
+        "pagination",
+        "limit",
+        "request_started_at",
+        "response_completed_at",
+        "http_status",
+        "capabilities",
+        "rate_limit"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        },
+        "discord_api_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guild_id": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "channel_id": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "endpoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pagination": {
+          "type": "object",
+          "required": [
+            "before",
+            "after"
+          ],
+          "properties": {
+            "before": {
+              "$ref": "#/$defs/nullable_snowflake"
+            },
+            "after": {
+              "$ref": "#/$defs/nullable_snowflake"
+            }
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "request_started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "response_completed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "http_status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "capabilities": {
+          "type": "object",
+          "required": [
+            "message_content"
+          ],
+          "properties": {
+            "message_content": {
+              "type": "boolean"
+            }
+          }
+        },
+        "rate_limit": {
+          "type": "object",
+          "required": [
+            "limit",
+            "remaining",
+            "reset_after_seconds",
+            "bucket"
+          ],
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "remaining": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "reset_after_seconds": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "bucket": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

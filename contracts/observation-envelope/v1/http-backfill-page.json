@@ -1,0 +1,63 @@
+{
+  "envelope_version": "v1",
+  "observation_id": "0199a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b",
+  "source_kind": "http_backfill",
+  "observed_at": "2026-09-21T10:00:00.250Z",
+  "payload": [
+    {
+      "id": "1000002",
+      "channel_id": "222222222222222222",
+      "author": {
+        "id": "333333333333333333",
+        "username": "alice",
+        "bot": false
+      },
+      "content": "second message",
+      "timestamp": "2026-09-21T09:59:59.000Z",
+      "edited_timestamp": null,
+      "attachments": [],
+      "embeds": [],
+      "type": 0
+    },
+    {
+      "id": "1000001",
+      "channel_id": "222222222222222222",
+      "author": {
+        "id": "333333333333333333",
+        "username": "alice",
+        "bot": false
+      },
+      "content": "first message",
+      "timestamp": "2026-09-21T09:59:58.000Z",
+      "edited_timestamp": "2026-09-21T09:59:58.500Z",
+      "attachments": [],
+      "embeds": [],
+      "type": 0
+    }
+  ],
+  "provenance": {
+    "run_id": "0199a1b2-0000-7000-8000-000000000001",
+    "discord_api_version": "10",
+    "guild_id": "111111111111111111",
+    "channel_id": "222222222222222222",
+    "operation": "get_channel_messages",
+    "endpoint": "/channels/222222222222222222/messages",
+    "pagination": {
+      "before": "1000003",
+      "after": null
+    },
+    "limit": 100,
+    "request_started_at": "2026-09-21T10:00:00.000Z",
+    "response_completed_at": "2026-09-21T10:00:00.250Z",
+    "http_status": 200,
+    "capabilities": {
+      "message_content": true
+    },
+    "rate_limit": {
+      "limit": 5,
+      "remaining": 4,
+      "reset_after_seconds": 1.5,
+      "bucket": "route-bucket-hash"
+    }
+  }
+}

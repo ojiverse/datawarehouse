@@ -28,7 +28,8 @@ describe("DiscordHttpBudgetDurableObject", () => {
 
   it("denies once the invalid-request budget safety threshold is reached", async () => {
     const { stub, clock } = await budgetWithClock("invalid");
-    for (let i = 0; i < 9_000; i++) {
+    // vitest.config.ts sets DISCORD_INVALID_REQUEST_BUDGET=100; 90 % of it is the safety threshold.
+    for (let i = 0; i < 90; i++) {
       await stub.report({ status: 403, scope: null, global: false, retry_after_ms: null });
     }
     expect(await stub.acquire()).toMatchObject({

@@ -9,6 +9,9 @@ export default defineConfig({
         bindings: {
           BACKFILL_API_TOKEN: "test-api-token",
           DISCORD_BOT_TOKEN: "test-bot-token",
+          // Small budget so the exhaustion test needs ~90 RPC reports instead of ~9,000,
+          // which exceeds the 5 s test timeout on CI runners.
+          DISCORD_INVALID_REQUEST_BUDGET: "100",
         },
       },
     }),

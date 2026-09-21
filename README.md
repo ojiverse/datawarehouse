@@ -28,7 +28,7 @@ Cloudflare Workers / Durable Objects の runtime API に密接に結合する co
 
 ## 技術検証（#36 spike）の実行
 
-Archive → iceberg-go → R2 Data Catalog → R2 SQL の閉ループ検証は `scripts/spike.sh loop` で実行する。R2 dev 環境の接続情報と secret は 1Password（ojilab account、vault `datawarehouse-dev`、item `cloudflare-r2-dwh-spike`）に置き、`spike/r2-dev.op.env` の `op://` 参照経由で注入する。secret をファイルや環境に平文で置かない。
+Archive → iceberg-go → R2 Data Catalog → R2 SQL の閉ループ検証は `scripts/spike.sh loop` で実行する。R2 dev 環境の接続情報と secret は 1Password（ojilab account、vault `ojiverse-datawarehouse-dev`、item `cloudflare-r2-dwh-spike`）に置き、`spike/r2-dev.op.env` の `op://` 参照経由で注入する。secret をファイルや環境に平文で置かない。
 
 ```
 op run --account ojilab --env-file spike/r2-dev.op.env -- scripts/spike.sh loop

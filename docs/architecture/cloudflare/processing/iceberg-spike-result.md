@@ -90,7 +90,7 @@ OJIverse account（`8df65b32589ad7acc6d3d257d5dd2d04`）に dev 用 resource を
 
 ### 実行手順
 
-接続情報と secret は 1Password（ojilab account、vault `datawarehouse-dev`、item `cloudflare-r2-dwh-spike`）で管理し、`spike/r2-dev.op.env` に `op://` 参照だけを置く。実行は次のコマンドで行い、secret を shell history や repository に残さない。
+接続情報と secret は 1Password（ojilab account、vault `ojiverse-datawarehouse-dev`、item `cloudflare-r2-dwh-spike`）で管理し、`spike/r2-dev.op.env` に `op://` 参照だけを置く。実行は次のコマンドで行い、secret を shell history や repository に残さない。
 
 `op run --account ojilab --env-file spike/r2-dev.op.env -- scripts/spike.sh loop`
 

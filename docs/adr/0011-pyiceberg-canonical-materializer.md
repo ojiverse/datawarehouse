@@ -1,8 +1,10 @@
 # ADR-0011: first-MVP の Canonical materializer に PyIceberg を採用する
 
-* **ステータス**: 承認（Accepted）
+* **ステータス**: 置換済み（Superseded by ADR-0013）
 * **決定日**: 2026-09-20
 * **対象領域**: Canonical Store / Processing
+
+> **置換注記**: PyIceberg + PyArrow を固定 implementation とする決定は ADR-0013 により置換された。本文は当時の判断履歴として保持する。
 
 ## コンテキスト
 

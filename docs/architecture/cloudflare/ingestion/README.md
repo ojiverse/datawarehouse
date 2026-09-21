@@ -2,6 +2,8 @@
 
 本ディレクトリでは、Discord Gateway との WebSocket 接続を Cloudflare 上で維持し、Dispatch を Observation Archive へ安全に永続化するアーキテクチャを定義する。
 
+Cloudflare 上の Gateway Worker / Durable Object は **TypeScript** で実装する。Cloudflare 外の portable Gateway collector は **Go** を既定とする。
+
 ## Gateway Session Owner
 
 Cloudflare 上の1 Gateway Instance が所有する1 Discord Gateway Session の stateful owner に Durable Object を使用する。

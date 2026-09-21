@@ -106,7 +106,7 @@ func toCanonical(env observation.Envelope, m observation.MessageSnapshot) (Canon
 		return CanonicalMessage{}, err
 	}
 	return CanonicalMessage{
-		MessageID: m.ID, ChannelID: m.ChannelID, GuildID: env.HTTP.GuildID,
+		MessageID: m.ID, ChannelID: m.ChannelID, GuildID: env.Provenance.GuildID,
 		AuthorID: m.Author.ID, AuthorUsername: m.Author.Username, AuthorIsBot: m.Author.Bot,
 		Content: m.Content, CreatedAt: m.Timestamp.UTC(), EditedAt: utcPtr(m.EditedTimestamp),
 		Pinned: m.Pinned, MessageType: m.Type,

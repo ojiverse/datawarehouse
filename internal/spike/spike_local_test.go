@@ -36,9 +36,10 @@ func TestClosedLoopAgainstLocalCatalog(t *testing.T) {
 				"s3.force-virtual-addressing": "false",
 			},
 		},
-		TableName:      "message",
-		Fixture:        observation.DefaultFixtureSpec(),
-		DiscordEnvKeys: []string{"DISCORD_BOT_TOKEN"},
+		TableName:          "message",
+		Fixture:            observation.DefaultFixtureSpec(),
+		ContractFixtureDir: "../../contracts/observation-envelope/v1",
+		DiscordEnvKeys:     []string{"DISCORD_BOT_TOKEN"},
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	t.Cleanup(func() { _ = spike.Cleanup(context.Background(), cfg, log) })

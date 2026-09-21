@@ -19,9 +19,9 @@ func env(t *testing.T, observed time.Time, payload string) observation.Envelope 
 	}
 	return observation.Envelope{
 		EnvelopeVersion: observation.EnvelopeVersion, ObservationID: id,
-		SourceKind: observation.SourceHTTPBackfill, ObservedAt: observed,
-		Payload: json.RawMessage(payload),
-		HTTP:    &observation.HTTPProvenance{GuildID: "1", ChannelID: "2"},
+		SourceKind: observation.SourceHTTPBackfill, ObservedAt: observation.TS(observed),
+		Payload:    json.RawMessage(payload),
+		Provenance: &observation.HTTPProvenance{GuildID: "1", ChannelID: "2"},
 	}
 }
 

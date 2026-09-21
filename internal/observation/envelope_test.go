@@ -20,12 +20,13 @@ func sampleEnvelope(t *testing.T) observation.Envelope {
 		EnvelopeVersion: observation.EnvelopeVersion,
 		ObservationID:   id,
 		SourceKind:      observation.SourceHTTPBackfill,
-		ObservedAt:      time.Date(2026, 9, 21, 3, 4, 5, 0, time.UTC),
+		ObservedAt:      observation.TS(time.Date(2026, 9, 21, 3, 4, 5, 0, time.UTC)),
 		Payload:         json.RawMessage(`[{"id":"1000","channel_id":"2","author":{"id":"3"},"content":"hi","timestamp":"2026-09-20T00:00:00Z","edited_timestamp":null}]`),
-		HTTP: &observation.HTTPProvenance{
+		Provenance: &observation.HTTPProvenance{
 			RunID: "run", DiscordAPIVersion: "10", GuildID: "1", ChannelID: "2",
-			Operation: "get_channel_messages", Pagination: map[string]string{"before": "1001"}, Limit: 100,
-			RequestStartedAt: time.Now().UTC(), ResponseCompletedAt: time.Now().UTC(), HTTPStatus: 200,
+			Operation: "get_channel_messages", Endpoint: "/channels/2/messages",
+			Pagination: observation.Pagination{Before: ptr("1001")}, Limit: 100,
+			RequestStartedAt: observation.TS(time.Now()), ResponseCompletedAt: observation.TS(time.Now()), HTTPStatus: 200,
 			Capabilities: map[string]bool{"message_content": true},
 		},
 	}
@@ -41,7 +42,7 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ObservationID != e.ObservationID || got.SourceKind != e.SourceKind || !got.ObservedAt.Equal(e.ObservedAt) {
+	if got.ObservationID != e.ObservationID || got.SourceKind != e.SourceKind || !got.ObservedAt.Equal(e.ObservedAt.Time) {
 		t.Fatalf("round trip mismatch: %+v vs %+v", got, e)
 	}
 	if got.PayloadSHA256() != e.PayloadSHA256() {
@@ -64,9 +65,11 @@ func TestValidateRejectsNonV7(t *testing.T) {
 	}
 }
 
+func ptr(s string) *string { return &s }
+
 func TestValidateRequiresHTTPProvenance(t *testing.T) {
 	e := sampleEnvelope(t)
-	e.HTTP = nil
+	e.Provenance = nil
 	if err := e.Validate(); err == nil || !strings.Contains(err.Error(), "provenance") {
 		t.Fatalf("expected provenance error, got %v", err)
 	}

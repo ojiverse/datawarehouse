@@ -2,8 +2,10 @@
 // as stored in the R2 Observation Archive (UTF-8 JSON + gzip).
 //
 // The logical contract lives in docs/domain/observations/envelope.md and
-// docs/domain/observations/identity.md; this package only decides field names
-// and byte layout, which are Architecture / Infrastructure responsibilities.
+// docs/domain/observations/identity.md. The physical JSON is fixed by the
+// shared cross-language fixtures under contracts/observation-envelope/v1
+// (ADR-0014): the TypeScript producer and this Go reader must both accept and
+// reproduce those documents, so field names here follow the fixture exactly.
 package observation
 
 import (
@@ -15,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -63,35 +64,57 @@ func (o ObservationID) Less(other ObservationID) bool {
 	return bytes.Compare(o.UUID[:], other.UUID[:]) < 0
 }
 
+// Pagination holds the Discord pagination parameters of the request. Absent
+// parameters are JSON null, as the shared fixture requires, so both fields
+// are pointers rather than omitted keys.
+type Pagination struct {
+	Before *string `json:"before"`
+	After  *string `json:"after"`
+}
+
+// RateLimit carries the diagnostic Discord rate-limit headers. It is never an
+// input to identity or completeness (docs/domain/observations/envelope.md).
+type RateLimit struct {
+	Limit             int     `json:"limit"`
+	Remaining         int     `json:"remaining"`
+	ResetAfterSeconds float64 `json:"reset_after_seconds"`
+	Bucket            string  `json:"bucket"`
+}
+
 // HTTPProvenance is the http_backfill / http_reconciliation provenance block.
 // Secrets (tokens, cookies) must never be placed here.
 type HTTPProvenance struct {
-	RunID               string            `json:"run_id"`
-	DiscordAPIVersion   string            `json:"discord_api_version"`
-	GuildID             string            `json:"guild_id"`
-	ChannelID           string            `json:"channel_id"`
-	Operation           string            `json:"operation"`
-	Pagination          map[string]string `json:"pagination"`
-	Limit               int               `json:"limit"`
-	RequestStartedAt    time.Time         `json:"request_started_at"`
-	ResponseCompletedAt time.Time         `json:"response_completed_at"`
-	HTTPStatus          int               `json:"http_status"`
+	RunID               string     `json:"run_id"`
+	DiscordAPIVersion   string     `json:"discord_api_version"`
+	GuildID             string     `json:"guild_id"`
+	ChannelID           string     `json:"channel_id"`
+	Operation           string     `json:"operation"`
+	Endpoint            string     `json:"endpoint"`
+	Pagination          Pagination `json:"pagination"`
+	Limit               int        `json:"limit"`
+	RequestStartedAt    Timestamp  `json:"request_started_at"`
+	ResponseCompletedAt Timestamp  `json:"response_completed_at"`
+	HTTPStatus          int        `json:"http_status"`
 	// Capabilities records application state that affects completeness,
 	// e.g. whether the Message Content privileged intent was granted.
 	Capabilities map[string]bool `json:"capabilities"`
+	RateLimit    *RateLimit      `json:"rate_limit,omitempty"`
 }
 
-// Envelope is the common Observation Envelope v1.
+// Envelope is the common Observation Envelope v1 with the HTTP provenance
+// block. Payload keeps the raw Discord response body verbatim so the Archive
+// never loses fields the producer did not understand.
 //
-// Payload keeps the raw Discord response body verbatim (json.RawMessage) so the
-// Archive never loses fields the producer did not understand.
+// Gateway provenance is a different block under the same "provenance" key; it
+// is out of scope for the spike and will be modelled when Gateway ingestion
+// is implemented, without changing the common part.
 type Envelope struct {
 	EnvelopeVersion string          `json:"envelope_version"`
 	ObservationID   ObservationID   `json:"observation_id"`
 	SourceKind      SourceKind      `json:"source_kind"`
-	ObservedAt      time.Time       `json:"observed_at"`
+	ObservedAt      Timestamp       `json:"observed_at"`
 	Payload         json.RawMessage `json:"payload"`
-	HTTP            *HTTPProvenance `json:"http_provenance,omitempty"`
+	Provenance      *HTTPProvenance `json:"provenance,omitempty"`
 }
 
 // Validate checks the structural invariants of a v1 Envelope.
@@ -104,7 +127,7 @@ func (e Envelope) Validate() error {
 	}
 	switch e.SourceKind {
 	case SourceHTTPBackfill, SourceHTTPReconciliation:
-		if e.HTTP == nil {
+		if e.Provenance == nil {
 			return fmt.Errorf("source kind %s requires http provenance", e.SourceKind)
 		}
 	case SourceGateway:
@@ -136,6 +159,19 @@ func (e Envelope) ArchiveKey() string {
 		e.SourceKind, t.Year(), int(t.Month()), t.Day(), t.Hour(), e.ObservationID.String())
 }
 
+// DecodeJSON parses an uncompressed Envelope document (e.g. a contract fixture)
+// and validates it.
+func DecodeJSON(data []byte) (Envelope, error) {
+	var e Envelope
+	if err := json.Unmarshal(data, &e); err != nil {
+		return Envelope{}, fmt.Errorf("decode envelope: %w", err)
+	}
+	if err := e.Validate(); err != nil {
+		return Envelope{}, err
+	}
+	return e, nil
+}
+
 // EncodeGzipJSON serialises the Envelope as gzip-compressed UTF-8 JSON.
 func EncodeGzipJSON(e Envelope) ([]byte, error) {
 	if err := e.Validate(); err != nil {
@@ -159,12 +195,9 @@ func DecodeGzipJSON(r io.Reader) (Envelope, error) {
 		return Envelope{}, fmt.Errorf("gunzip envelope: %w", err)
 	}
 	defer zr.Close()
-	var e Envelope
-	if err := json.NewDecoder(zr).Decode(&e); err != nil {
-		return Envelope{}, fmt.Errorf("decode envelope: %w", err)
+	raw, err := io.ReadAll(zr)
+	if err != nil {
+		return Envelope{}, fmt.Errorf("read envelope: %w", err)
 	}
-	if err := e.Validate(); err != nil {
-		return Envelope{}, err
-	}
-	return e, nil
+	return DecodeJSON(raw)
 }

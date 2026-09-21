@@ -21,12 +21,12 @@ import (
 
 // Metadata keys stored as S3 user metadata so each object is self-describing.
 const (
-	metaFormat          = "dwh-format"
-	metaCompression     = "dwh-compression"
-	metaEnvelopeVersion = "dwh-envelope-version"
-	metaObservationID   = "dwh-observation-id"
-	metaSourceKind      = "dwh-source-kind"
-	metaPayloadSHA256   = "dwh-payload-sha256"
+	metaFormat          = "format"
+	metaCompression     = "compression"
+	metaEnvelopeVersion = "envelope_version"
+	metaObservationID   = "observation_id"
+	metaSourceKind      = "source_kind"
+	metaPayloadSHA256   = "payload_sha256"
 )
 
 // Config selects the bucket and S3 endpoint (R2 or a local S3-compatible store).

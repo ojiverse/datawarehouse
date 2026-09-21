@@ -3,7 +3,7 @@
 # R2-specific ones, as required by the #36 Failure Rule.
 services:
   minio:
-    image: quay.io/minio/minio:latest
+    image: quay.io/minio/minio@sha256:e9e29897d0c5520a20ef77a4819a1e523ebcb521f19ad200fdc570f1a01913ca
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: dwhspike
@@ -19,7 +19,7 @@ services:
       retries: 30
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: quay.io/minio/mc@sha256:fbd6f17a724fa14b7b295e83df170d9442000a3177bd8179ea8f8de6a1cebafd
     depends_on:
       minio:
         condition: service_healthy
@@ -31,7 +31,7 @@ services:
       exit 0"
 
   iceberg-rest:
-    image: apache/iceberg-rest-fixture:latest
+    image: apache/iceberg-rest-fixture@sha256:ae68f294f1a8042310c257cef8fab21fd9f78569f650a101d8731cb1a7430864
     depends_on:
       minio-init:
         condition: service_completed_successfully

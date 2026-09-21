@@ -39,6 +39,10 @@ type Config struct {
 	// R2SQLTable is the fully qualified name R2 SQL expects (namespace.table).
 	R2SQLTable string
 	Fixture    observation.FixtureSpec
+	// ContractFixtureDir holds the shared cross-language Envelope fixtures
+	// (contracts/observation-envelope/v1); they are archived alongside the
+	// generated pages so the loop consumes the authoritative v1 documents.
+	ContractFixtureDir string
 	// DiscordEnvKeys are environment variables that must be absent during rebuild.
 	DiscordEnvKeys []string
 }
@@ -155,6 +159,15 @@ func (r *runner) run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		shared := 0
+		if r.cfg.ContractFixtureDir != "" {
+			contract, err := observation.LoadContractFixtures(r.cfg.ContractFixtureDir)
+			if err != nil {
+				return fmt.Errorf("load contract fixtures: %w", err)
+			}
+			shared = len(contract)
+			envs = append(envs, contract...)
+		}
 		created := 0
 		for _, e := range envs {
 			res, err := r.arch.PutCreateOnly(ctx, e)
@@ -172,7 +185,7 @@ func (r *runner) run(ctx context.Context) error {
 		if retry != archive.PutIdempotentRetry {
 			return fmt.Errorf("retry of existing object returned %s", retry)
 		}
-		r.pass("archive_put_envelope_v1", fmt.Sprintf("%d objects created under %s; retry of %s was idempotent", created, r.cfg.ArchivePrefix, envs[0].ArchiveKey()))
+		r.pass("archive_put_envelope_v1", fmt.Sprintf("%d of %d objects created under %s (%d shared contract fixtures included); retry of %s was idempotent", created, len(envs), r.cfg.ArchivePrefix, shared, envs[0].ArchiveKey()))
 		return nil
 	}); err != nil {
 		return r.fail("archive_put_envelope_v1", err)

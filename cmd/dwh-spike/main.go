@@ -96,9 +96,10 @@ func configFromEnv() (spike.Config, error) {
 			Namespace: envOr("DWH_CATALOG_NAMESPACE", "dwh_spike"),
 			Props:     parseProps(os.Getenv("DWH_CATALOG_PROPS")),
 		},
-		TableName:      "message",
-		Fixture:        observation.DefaultFixtureSpec(),
-		DiscordEnvKeys: []string{"DISCORD_BOT_TOKEN", "DISCORD_TOKEN", "DISCORD_CLIENT_SECRET"},
+		TableName:          "message",
+		Fixture:            observation.DefaultFixtureSpec(),
+		ContractFixtureDir: envOr("DWH_SPIKE_CONTRACT_DIR", "contracts/observation-envelope/v1"),
+		DiscordEnvKeys:     []string{"DISCORD_BOT_TOKEN", "DISCORD_TOKEN", "DISCORD_CLIENT_SECRET"},
 	}
 	cfg.R2SQLTable = cfg.Catalog.Namespace + "." + cfg.TableName
 	if acct := os.Getenv("DWH_R2SQL_ACCOUNT_ID"); acct != "" {

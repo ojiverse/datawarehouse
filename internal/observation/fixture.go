@@ -3,6 +3,9 @@ package observation
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -33,8 +36,9 @@ func DefaultFixtureSpec() FixtureSpec {
 	}
 }
 
-// GenerateFixture builds the Envelope set. Observation IDs are UUIDv7 and thus
-// differ per run; the domain content (Message IDs, edits) is deterministic.
+// GenerateFixture builds the Envelope set with the same physical JSON shape
+// as contracts/observation-envelope/v1/http-backfill-page.json. Observation IDs
+// are UUIDv7 and thus differ per run; the domain content is deterministic.
 func GenerateFixture(spec FixtureSpec) ([]Envelope, error) {
 	if spec.Pages <= 0 || spec.MessagesPerPage <= 0 || spec.Overlap >= spec.MessagesPerPage {
 		return nil, fmt.Errorf("invalid fixture spec %+v", spec)
@@ -60,23 +64,49 @@ func GenerateFixture(spec FixtureSpec) ([]Envelope, error) {
 		if err != nil {
 			return nil, err
 		}
+		before := fixtureSnowflake(spec.Base, first+spec.MessagesPerPage)
 		envs = append(envs, Envelope{
 			EnvelopeVersion: EnvelopeVersion,
 			ObservationID:   id,
 			SourceKind:      SourceHTTPBackfill,
-			ObservedAt:      observed,
+			ObservedAt:      TS(observed),
 			Payload:         payload,
-			HTTP: &HTTPProvenance{
-				RunID: "fixture-run", DiscordAPIVersion: "10",
+			Provenance: &HTTPProvenance{
+				RunID: "0199a1b2-0000-7000-8000-00000000f1de", DiscordAPIVersion: "10",
 				GuildID: spec.GuildID, ChannelID: spec.ChannelID,
 				Operation:        "get_channel_messages",
-				Pagination:       map[string]string{"before": fixtureSnowflake(spec.Base, first+spec.MessagesPerPage)},
+				Endpoint:         "/channels/" + spec.ChannelID + "/messages",
+				Pagination:       Pagination{Before: &before, After: nil},
 				Limit:            spec.MessagesPerPage,
-				RequestStartedAt: observed.Add(-time.Second), ResponseCompletedAt: observed,
+				RequestStartedAt: TS(observed.Add(-time.Second)), ResponseCompletedAt: TS(observed),
 				HTTPStatus:   200,
 				Capabilities: map[string]bool{"message_content": true},
+				RateLimit:    &RateLimit{Limit: 5, Remaining: 5 - p%5, ResetAfterSeconds: 1.5, Bucket: "route-bucket-hash"},
 			},
 		})
+	}
+	return envs, nil
+}
+
+// LoadContractFixtures decodes every *.json Envelope document in dir (the
+// shared cross-language fixtures) in file-name order.
+func LoadContractFixtures(dir string) ([]Envelope, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	envs := make([]Envelope, 0, len(paths))
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		e, err := DecodeJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", p, err)
+		}
+		envs = append(envs, e)
 	}
 	return envs, nil
 }

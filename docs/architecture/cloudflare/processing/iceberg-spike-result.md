@@ -20,6 +20,14 @@ Spike 用 package の責務は次の通り。
 * `internal/r2sql`: R2 SQL HTTP API client
 * `internal/equivalence`: rebuild 前後の semantic equivalence 定義（primary key 順の正規化 serialization、snapshot id / file path / row order / materialization time を除外）
 
+## Archive 入力の contract 適合
+
+Archive 入力は `contracts/observation-envelope/v1/http-backfill-page.json`（HTTP Backfill producer と共有する authoritative fixture、ADR-0014）を物理契約とする。Go の Envelope 型は fixture と同じ field 名（top-level `provenance`、`provenance.endpoint`、`provenance.rate_limit`、null を許す `pagination.before / after`）を持ち、R2 object の custom metadata も fixture README の `format` / `compression` / `envelope_version` / `observation_id` / `source_kind` / `payload_sha256` に揃えた。
+
+compatibility test（`internal/observation/contract_test.go`）は shared fixture を decode し、canonical JSON（key sort、空白除去）で byte 一致する再 encode と gzip round-trip を要求する。時刻は producer と同じミリ秒固定精度で出力する型を使う。Go 標準の time 型は末尾の 0 を落とすため（`.250Z` が `.25Z` になる）、そのままでは byte 一致しない。spike の fixture generator も同じ key 構成を出すことを test で固定した。
+
+閉ループは生成 fixture 4 page に shared fixture 1 page を加えた 5 object を Archive 入力とする。
+
 ## 検証環境の二段構成
 
 Failure Rule 第 2 項（Iceberg REST / Parquet boundary 自体の問題か iceberg-go 固有の問題かの切り分け）に備え、同一コードを二つの catalog に対して実行する。
@@ -29,14 +37,14 @@ Failure Rule 第 2 項（Iceberg REST / Parquet boundary 自体の問題か iceb
 
 R2 でのみ失敗する項目は R2 固有、両方で失敗する項目は iceberg-go / protocol 側の問題として分類する。
 
-## Local Reference の結果（2026-09-21 実測）
+## Local Reference の結果（2026-09-22 再実測、shared fixture 込み）
 
-apache/iceberg-rest-fixture + MinIO に対して閉ループは全項目 PASS した（R2 SQL 項目は環境上 skip）。
+apache/iceberg-rest-fixture + MinIO（image は digest で pin）に対して閉ループは全項目 PASS した（R2 SQL 項目は環境上 skip）。
 
 | Success Criterion | 結果 | 根拠 |
 | :--- | :--- | :--- |
-| Envelope v1 fixture を Archive へ保存 | PASS | 4 object を create-only put で保存。同一 object の再 put は Observation ID と payload hash の一致により idempotent success |
-| fixture から Canonical Message Parquet を生成 | PASS | 4 page（overlap あり）から 85 row を projection。全 column chunk の codec が ZSTD であることを Parquet metadata から確認 |
+| Envelope v1 fixture を Archive へ保存 | PASS | 生成 4 page + shared fixture 1 page の 5 object を create-only put で保存。同一 object の再 put は Observation ID と payload hash の一致により idempotent success |
+| fixture から Canonical Message Parquet を生成 | PASS | 5 page（overlap あり）から 87 row を projection。全 column chunk の codec が ZSTD であることを Parquet metadata から確認 |
 | iceberg-go から REST Catalog に接続 | PASS | rest.Catalog で接続 |
 | namespace / table を作成 | PASS | `dwh_spike.message` を固定 schema で作成 |
 | Parquet data file を Iceberg table へ commit | PASS | table FileIO 経由で staging file を書き、AddFiles で snapshot を作成 |
@@ -44,11 +52,11 @@ apache/iceberg-rest-fixture + MinIO に対して閉ループは全項目 PASS �
 | R2 SQL から query | SKIP | local には R2 SQL が存在しない。代替として iceberg-go scan が projection と一致することを確認 |
 | Canonical table を削除 | PASS | purge 後に CheckTableExists = false |
 | Discord API へアクセスせず再生成 | PASS | Discord credential 環境変数が未設定であることを assert した上で Archive listing のみから再 materialize |
-| 再生成前後の domain data が一致 | PASS | 正規化 serialization の SHA-256 digest が一致（85 row）。chunk identity も一致 |
+| 再生成前後の domain data が一致 | PASS | 正規化 serialization の SHA-256 digest が一致（87 row）。chunk identity も一致 |
 | runtime constraint の記録 | PASS | 後述 |
 | beta 制約の記録 | N/A | R2 real environment で実測する（後節） |
 
-Local 実測の resource は次の通り（macOS arm64、Go 1.26.3、fixture 85 row）。
+Local 実測の resource は次の通り（macOS arm64、Go 1.26.3、初回 2026-09-21 の 85 row 実行時。再実測でも同水準）。
 
 | 指標 | 値 |
 | :--- | :--- |
@@ -96,22 +104,22 @@ OJIverse account（`8df65b32589ad7acc6d3d257d5dd2d04`）に dev 用 resource を
 
 環境変数の意味は `cmd/dwh-spike/main.go` の package comment に記載する。後片付けは同じ形で `scripts/spike.sh cleanup` を実行する。
 
-## R2 Real Environment の結果（2026-09-21 実測）
+## R2 Real Environment の結果（2026-09-21 初回、2026-09-22 shared fixture 込みで再実測）
 
-R2 API token（Admin Read & Write、TTL 1 週間）を 1Password 経由で注入し、上記コマンドで閉ループを 1 回で完走した（exit 0、retry なし）。R2 でのみ失敗した項目はなく、Failure Rule の発動は不要である。
+R2 API token（Admin Read & Write、TTL 1 週間）を 1Password 経由で注入し、上記コマンドで閉ループを完走した（両日とも exit 0、retry なし）。以下は shared contract fixture を含む 2026-09-22 の結果である。R2 でのみ失敗した項目はなく、Failure Rule の発動は不要である。
 
 | Success Criterion | 結果 | 根拠 |
 | :--- | :--- | :--- |
-| Envelope v1 fixture を R2 Observation Archive へ保存 | PASS | S3 API の `If-None-Match: *` create-only put で 4 object を保存。再 put は 412 を受けて metadata 照合により idempotent success |
-| fixture から Canonical Message Parquet を生成 | PASS | R2 listing のみを入力に 85 row、ZSTD |
+| Envelope v1 fixture を R2 Observation Archive へ保存 | PASS | S3 API の `If-None-Match: *` create-only put で 5 object（shared fixture 1 件を含む）を保存。再 put は 412 を受けて metadata 照合により idempotent success |
+| fixture から Canonical Message Parquet を生成 | PASS | R2 listing のみを入力に 87 row、ZSTD。shared fixture の 2 Message（うち 1 件は edited）も projection に含まれる |
 | iceberg-go から R2 Data Catalog に接続 | PASS | bearer token のみで REST Catalog に接続 |
 | namespace / table を作成 | PASS | `dwh_spike.message`。table location は catalog 管理の `s3://<bucket>/__r2_data_catalog/<catalog uuid>/<table uuid>` |
 | Parquet data file を Iceberg table へ commit | PASS | vended credential で staging file を書き、AddFiles で snapshot 作成 |
 | commit retry で同じ data file を二重登録しない | PASS | 再読込後 retry は already_referenced、iceberg-go の AddFiles も拒否、snapshot 不変 |
-| R2 SQL から query | PASS | 85 row が projection の identity set と一致。COUNT(*) = 85。commit 直後の初回 query で整合し propagation retry は不要だった |
+| R2 SQL から query | PASS | 87 row が projection の identity set と一致。COUNT(*) = 87。commit 直後の初回 query で整合し propagation retry は不要だった（両日とも） |
 | Canonical table を削除 | PASS | PurgeTable が受理され CheckTableExists = false |
 | Discord API へアクセスせず再生成 | PASS | Discord 環境変数未設定を assert し Archive listing のみから再 materialize |
-| 再生成前後の domain data が一致 | PASS | digest 一致（85 row）、chunk identity 一致。rebuild 後の R2 SQL も 85 row 一致 |
+| 再生成前後の domain data が一致 | PASS | digest 一致（87 row）、chunk identity 一致。rebuild 後の R2 SQL も 87 row 一致 |
 | runtime constraint の記録 | PASS | 後述 |
 | beta 制約の記録 | PASS | 後述 |
 
@@ -123,24 +131,24 @@ catalog property に S3 key を一切渡さず（`DWH_CATALOG_PROPS` 未設定�
 
 Cloudflare v4 wrapper（success / errors / messages）の `result` 配下に `request_id`、`schema`（column ごとの name と型 descriptor、nullable）、`rows`（column 名を key とする object の配列）、`metrics`（r2_requests_count、files_scanned、bytes_scanned、cache_hits）を持つ。string / int64 は JSON の文字列 / 数値として返る。timestamp 型の表現は本 spike では比較対象にしていない。
 
-### 実測 resource / latency（macOS arm64 → R2 APAC、fixture 85 row）
+### 実測 resource / latency（macOS arm64 → R2 APAC、2 回の実行の範囲）
 
 | 指標 | 値 |
 | :--- | :--- |
-| user / system CPU | 約 330 ms / 130 ms |
+| user / system CPU | 約 300〜330 ms / 100〜130 ms |
 | max RSS | 約 118 MB |
-| Archive put（4 object + retry） | 約 1.5 s |
-| catalog namespace + table 作成 | 約 7.5 s（初回）、rebuild 時 約 5.9 s |
-| staging 書き込み + commit | 約 2.4〜3.7 s |
-| iceberg-go scan | 約 0.6 s |
-| R2 SQL SELECT（初回 / 2 回目以降） | 約 19.8 s / 約 2.5 s |
-| drop（purge） | 約 0.6 s |
+| Archive put（4〜5 object + retry） | 約 1.3〜1.5 s |
+| catalog namespace + table 作成 | 約 3.9〜7.5 s |
+| staging 書き込み + commit | 約 2.4〜5.6 s |
+| iceberg-go scan | 約 0.6〜0.8 s |
+| R2 SQL（SELECT + COUNT、1 criterion 分） | 約 6〜26 s。cold な初回 SELECT が 約 10〜20 s、warm な query は 約 2.5 s |
+| drop（purge） | 約 0.6〜1.6 s |
 
-閉ループ全体は約 60 s で、そのうち R2 SQL の初回 query が支配的である。
+閉ループ全体は約 60〜65 s で、そのうち R2 SQL の cold query が支配的である。実行ごとのばらつきは R2 SQL 側が大きく、Go process 側は安定している。
 
 ### 観測した beta 制約
 
-* R2 SQL の初回 query は約 20 s かかり、以降は数秒に落ちる（cache_hits が増える）。interactive 用途では warm-up を前提にする
+* R2 SQL の cold query は約 10〜20 s かかり、以降は数秒に落ちる（cache_hits が増える）。table を作り直す rebuild 直後は再び cold になる。interactive 用途では warm-up を前提にする
 * R2 SQL の metrics は data file 1 つの table でも files_scanned 5 を返す（metadata / manifest を含む）
 * table location は catalog が `__r2_data_catalog/` 配下の UUID path で決めるため、application 側で物理 path を契約にしない設計（r2/README.md）は正しかった
 * R2 SQL 結果の既定上限は 500 row。大きな検証は LIMIT / 集計で行う

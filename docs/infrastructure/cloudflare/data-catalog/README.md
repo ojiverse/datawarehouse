@@ -12,9 +12,11 @@ Catalog / Canonical table を失っても Observation Archive から再作成可
 
 ## first-MVP Writer
 
-first-MVP の table creation / commit / rebuild には PyIceberg を使用する。
+first-MVP は **Iceberg REST Catalog を固定 boundary とし、iceberg-go を第一候補として #36 で検証する**。
 
-PyIceberg は R2 Data Catalog の REST Catalog へ接続し、R2 上の Parquet data file を Iceberg table として commit する。
+#36 が成功した場合、iceberg-go から R2 Data Catalog の REST Catalog へ接続し、R2 上の Parquet data file を Iceberg table として commit する。
+
+#36 が失敗した場合は blocking reason を記録し、PyIceberg 等の別公式 implementation を採用する前に設計へ戻す。
 
 Cloudflare Workers 内で独自の Iceberg metadata writer を実装しない。
 
@@ -22,7 +24,7 @@ Cloudflare Workers 内で独自の Iceberg metadata writer を実装しない。
 
 Canonical data file は Parquet、compression は Zstandard とする。
 
-staging Parquet file を既存 file として追加する場合、PyIceberg の duplicate file check を有効にする。
+staging Parquet file を既存 file として追加する場合、採用 Iceberg implementation で duplicate registration を防止する。
 
 Discord Snowflake column は decimal string として保持する。
 

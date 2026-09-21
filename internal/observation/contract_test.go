@@ -38,6 +38,9 @@ func TestSharedFixtureRoundTrip(t *testing.T) {
 		t.Fatalf("no shared fixtures found in %s (%v)", contractDir, err)
 	}
 	for _, p := range paths {
+		if filepath.Base(p) == "schema.json" {
+			continue
+		}
 		t.Run(filepath.Base(p), func(t *testing.T) {
 			data, err := os.ReadFile(p)
 			if err != nil {
@@ -84,14 +87,15 @@ func TestSharedFixtureFieldsAreTyped(t *testing.T) {
 	}
 	env := envs[0]
 	p := env.Provenance
-	if p == nil || p.Endpoint == "" || p.RateLimit == nil {
+	if p == nil || p.Endpoint == "" {
 		t.Fatalf("provenance not decoded: %+v", p)
 	}
 	if p.Pagination.Before == nil || *p.Pagination.Before != "1000003" || p.Pagination.After != nil {
 		t.Fatalf("pagination %+v", p.Pagination)
 	}
-	if p.RateLimit.ResetAfterSeconds != 1.5 || p.RateLimit.Bucket != "route-bucket-hash" {
-		t.Fatalf("rate_limit %+v", p.RateLimit)
+	rl := p.RateLimit
+	if rl.ResetAfterSeconds == nil || *rl.ResetAfterSeconds != 1.5 || rl.Bucket == nil || *rl.Bucket != "route-bucket-hash" || rl.Limit == nil || *rl.Limit != 5 {
+		t.Fatalf("rate_limit %+v", rl)
 	}
 	msgs, err := observation.DecodeHTTPPage(env.Payload)
 	if err != nil || len(msgs) != 2 || msgs[1].EditedTimestamp == nil {

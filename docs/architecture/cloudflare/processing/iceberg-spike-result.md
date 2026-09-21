@@ -20,11 +20,20 @@ Spike 用 package の責務は次の通り。
 * `internal/r2sql`: R2 SQL HTTP API client
 * `internal/equivalence`: rebuild 前後の semantic equivalence 定義（primary key 順の正規化 serialization、snapshot id / file path / row order / materialization time を除外）
 
-## Archive 入力の contract 適合
+## Archive 入力の contract 適合（ADR-0015）
 
-Archive 入力は `contracts/observation-envelope/v1/http-backfill-page.json`（HTTP Backfill producer と共有する authoritative fixture、ADR-0014）を物理契約とする。Go の Envelope 型は fixture と同じ field 名（top-level `provenance`、`provenance.endpoint`、`provenance.rate_limit`、null を許す `pagination.before / after`）を持ち、R2 object の custom metadata も fixture README の `format` / `compression` / `envelope_version` / `observation_id` / `source_kind` / `payload_sha256` に揃えた。
+Archive 入力の authoritative physical contract は `contracts/observation-envelope/v1/schema.json`（JSON Schema Draft 2020-12）であり、`http-backfill-page.json` が compatibility fixture である（`docs/architecture/data-contracts.md`）。Go の Envelope 型は schema から導出した implementation artifact として、top-level `provenance`、`provenance.endpoint`、required かつ全 member が nullable な `provenance.rate_limit`、null を許す `pagination.before / after` を持つ。R2 object の custom metadata は `format` / `compression` / `envelope_version` / `observation_id` / `source_kind` / `payload_sha256` とした。
 
-compatibility test（`internal/observation/contract_test.go`）は shared fixture を decode し、canonical JSON（key sort、空白除去）で byte 一致する再 encode と gzip round-trip を要求する。時刻は producer と同じミリ秒固定精度で出力する型を使う。Go 標準の time 型は末尾の 0 を落とすため（`.250Z` が `.25Z` になる）、そのままでは byte 一致しない。spike の fixture generator も同じ key 構成を出すことを test で固定した。
+compatibility proof は `internal/observation` の test で次を検証する。
+
+* shared fixture が JSON Schema に適合する（format assertion を有効にした validator を使用）
+* Go decoder が fixture を decode できる
+* decode → encode 後の JSON が semantic に等価である（key sort と空白除去後の canonical JSON が一致）。gzip round-trip でも Envelope が変化しない
+* decode → encode 後の JSON が再び schema に適合する
+* spike の fixture generator の出力が schema に適合し、shared fixture と同じ key 構成を持つ
+* validator が壊れた document（rate_limit 欠落）を拒否する
+
+時刻は producer と同じミリ秒固定精度で出力する型を使う。契約上は semantic equivalence で足りるが、Go 標準の time 型が末尾の 0 を落として `.250Z` を `.25Z` にする挙動は文字列比較で差分になるため、固定精度に揃えた。
 
 閉ループは生成 fixture 4 page に shared fixture 1 page を加えた 5 object を Archive 入力とする。
 

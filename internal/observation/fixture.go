@@ -81,7 +81,7 @@ func GenerateFixture(spec FixtureSpec) ([]Envelope, error) {
 				RequestStartedAt: TS(observed.Add(-time.Second)), ResponseCompletedAt: TS(observed),
 				HTTPStatus:   200,
 				Capabilities: map[string]bool{"message_content": true},
-				RateLimit:    &RateLimit{Limit: 5, Remaining: 5 - p%5, ResetAfterSeconds: 1.5, Bucket: "route-bucket-hash"},
+				RateLimit:    RateLimit{Limit: intPtr(5), Remaining: intPtr(5 - p%5), ResetAfterSeconds: floatPtr(1.5), Bucket: strPtr("route-bucket-hash")},
 			},
 		})
 	}
@@ -98,6 +98,9 @@ func LoadContractFixtures(dir string) ([]Envelope, error) {
 	sort.Strings(paths)
 	envs := make([]Envelope, 0, len(paths))
 	for _, p := range paths {
+		if filepath.Base(p) == "schema.json" {
+			continue // the schema is the contract, not a fixture instance
+		}
 		data, err := os.ReadFile(p)
 		if err != nil {
 			return nil, err
@@ -137,6 +140,10 @@ func fixtureMessage(spec FixtureSpec, index, page int, observed time.Time) map[s
 	}
 	return m
 }
+
+func intPtr(v int) *int           { return &v }
+func floatPtr(v float64) *float64 { return &v }
+func strPtr(v string) *string     { return &v }
 
 func fixtureSnowflake(t time.Time, seq int) string {
 	ms := uint64(t.UnixMilli() - DiscordEpochMillis)

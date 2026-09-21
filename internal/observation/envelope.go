@@ -74,11 +74,13 @@ type Pagination struct {
 
 // RateLimit carries the diagnostic Discord rate-limit headers. It is never an
 // input to identity or completeness (docs/domain/observations/envelope.md).
+// Every member is nullable in schema.json because Discord may omit a header,
+// while the block itself is required.
 type RateLimit struct {
-	Limit             int     `json:"limit"`
-	Remaining         int     `json:"remaining"`
-	ResetAfterSeconds float64 `json:"reset_after_seconds"`
-	Bucket            string  `json:"bucket"`
+	Limit             *int     `json:"limit"`
+	Remaining         *int     `json:"remaining"`
+	ResetAfterSeconds *float64 `json:"reset_after_seconds"`
+	Bucket            *string  `json:"bucket"`
 }
 
 // HTTPProvenance is the http_backfill / http_reconciliation provenance block.
@@ -98,7 +100,7 @@ type HTTPProvenance struct {
 	// Capabilities records application state that affects completeness,
 	// e.g. whether the Message Content privileged intent was granted.
 	Capabilities map[string]bool `json:"capabilities"`
-	RateLimit    *RateLimit      `json:"rate_limit,omitempty"`
+	RateLimit    RateLimit       `json:"rate_limit"`
 }
 
 // Envelope is the common Observation Envelope v1 with the HTTP provenance

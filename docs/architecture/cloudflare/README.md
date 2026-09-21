@@ -2,9 +2,9 @@
 
 本ディレクトリでは、Discord DWH のドメイン要件を Cloudflare の分散エッジプラットフォーム上で実現するためのアプリケーションアーキテクチャを定義する。
 
-## 全体コンポーネント構成
+実装言語は [Implementation Language Policy](../implementation-language.md) に従い、Cloudflare Workers / Durable Objects の native adapter は TypeScript、portable DWH logic は Go を既定とする。
 
-Cloudflare のサーバーレスランタイム、ステートフルオブジェクト、キュー、およびオブジェクトストレージを組み合わせ、高耐久かつ疎結合なパイプラインを構成する。
+## 全体コンポーネント構成
 
 ```mermaid
 flowchart TD
@@ -13,48 +13,48 @@ flowchart TD
         API[HTTP API]
     end
 
-    subgraph CloudflarePlatform[Cloudflare Platform]
-        subgraph IngestionLayer[取り込み層]
-            DO[Durable Object<br>Gateway Client]
-            BackfillWorker[Worker<br>Backfill Crawler]
-        end
-
-        subgraph BufferLayer[バッファ・配送]
-            Q[Cloudflare Queues]
-        end
-
-        subgraph StorageLayer[ストレージ層]
-            Archive[(R2: Observation Archive<br>生データ保管)]
-            Canonical[(R2: Canonical Store<br>Apache Iceberg)]
-        end
-
-        subgraph QueryLayer[クエリ層]
-            R2SQL[R2 SQL / Catalog]
-        end
+    subgraph CloudflarePlatform[Cloudflare]
+        GatewayDO[TypeScript<br>Gateway Session DO]
+        BackfillDO[TypeScript<br>Backfill Channel DO]
+        Ingest[TypeScript<br>External Ingest Worker]
+        Archive[(R2 Observation Archive)]
+        Catalog[(R2 Data Catalog)]
+        R2SQL[R2 SQL]
+        QueryAPI[TypeScript<br>Query API Worker]
     end
 
-    GW <-->|常時接続 / Resume| DO
-    API <-->|Rate-limited Fetch| BackfillWorker
+    subgraph Portable[Portable DWH]
+        Materializer[Go<br>Materializer / Rebuild]
+    end
 
-    DO -->|バッチ書き込み| Q
-    BackfillWorker -->|バッチ書き込み| Q
-
-    Q -->|高耐久永続化| Archive
-    Archive -.->|正規化・マテリアライズ| Canonical
-    Canonical -->|分析・集計| R2SQL
+    GW <--> GatewayDO
+    API <--> BackfillDO
+    GatewayDO --> Archive
+    BackfillDO --> Archive
+    Ingest --> Archive
+    Archive --> Materializer
+    Materializer --> Catalog
+    Catalog --> R2SQL
+    R2SQL --> QueryAPI
 ```
+
+Observation Archive への durable write path に Cloudflare Queues を置かない。
+
+Queues、R2 Event Notifications、Pipelines 等は、将来 Canonical freshness を改善する optional trigger として追加できるが、Source of Evidence や rebuild correctness の前提にしない。
 
 ## サブシステム一覧
 
-* [ingestion/](ingestion/README.md): Durable Objects を用いた Gateway 常時接続、セッション維持、およびイベント引き渡し
-* [observations/](observations/README.md): Cloudflare Queues と R2 を連携させた、Observation Archive の高耐久書き込みパス
-* [canonical-store/](canonical-store/README.md): R2 上の Apache Iceberg テーブルおよび R2 Data Catalog による分析モデルの実体化
-* [backfill/](backfill/README.md): Workers と Queues を利用した、レート制限追従型の HTTP クロールとアンチエントロピー照合
-* [processing/](processing/README.md): 生データの正規化、重複排除、および過去ログのリプレイ・再構築パイプライン
-* [operations/](operations/README.md): 死活監視、切断検知、データ完全性検証、および本番移行に向けた運用設計
+* [ingestion/](ingestion/README.md): TypeScript Durable Objects による Gateway Session ownership、Resume、Identify coordination
+* [observations/](observations/README.md): producer から R2 Observation Archive への direct write path
+* [canonical-store/](canonical-store/README.md): Apache Iceberg / R2 Data Catalog による Canonical Store
+* [backfill/](backfill/README.md): TypeScript Durable Objects による HTTP Backfill と durable progress
+* [processing/](processing/README.md): Go-first materializer、replay、full rebuild
+* [operations/](operations/README.md): failure detection、verification、Production Readiness
 
 ## アーキテクチャ設計原則
 
-1. **耐久性の独立（Durability First）**: Observation Archive への生データ書き込みの成否を、Canonical Store の正規化処理の成否に依存させてはならない。正規化処理が停止・失敗した場合であっても、生ログが R2 へ安全に蓄積され続ける構造を維持する。
-2. **手段と目的の分離**: Durable Objects、Queues、Pipelines 等の Cloudflare 機能はドメイン要件を充足するための実装手段であり、プラットフォーム側の仕様変更が生じた場合であってもドメインロジックへの影響を局所化する。
-3. **コストと耐久性の調和**: エッジワーカーによる無秩序な R2 PUT リクエストの乱発を排し、Queues によるバッチ集約を経由することで、R2 の Class A 操作コストを抑制する。
+1. **Durability First**: Observation Archive write を Canonical processing の成否に依存させない。
+2. **Direct Archive Commit**: HTTP / Gateway producer は R2 commit を Durable Acceptance とし、Queue retention を durability boundary にしない。
+3. **Portability Boundary**: portable DWH logic は Go、Cloudflare native adapter は TypeScript に限定する。
+4. **Derived Canonical**: Canonical Store は Observation Archive から rebuild 可能でなければならない。
+5. **Optional Acceleration**: Queue / Pipelines 等の追加 mechanism は correctness ではなく latency / cost optimization として導入する。

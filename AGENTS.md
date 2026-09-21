@@ -18,5 +18,10 @@
 * **[system-design/](docs/philosophy/system-design/README.md)（システム設計と不変条件）**: 現在の確実性のレベルで設計し、未知の将来要件のための余白を残し、唯一の事実源と宣言的な差分収束を徹底すること。
 * **[practices/](docs/philosophy/practices/README.md)（実装とデータ運用の規律）**: 設計としての型システム、デフォルトでの不変性、理由（Why）を記録するコメント、およびデータソース設計指針に従うこと。
 
-## 4. 設計文書体系の参照
+## 4. 実装言語ポリシーの遵守
+実装に着手する前に [docs/architecture/implementation-language.md](docs/architecture/implementation-language.md) を確認すること。
+
+既定実装言語は Go とし、Cloudflare Workers / Durable Objects の native runtime adapter に限って TypeScript を使用する。言語選択を実装者の好みで変更してはならない。Production dependency として別言語を追加する場合は ADR を要求する。
+
+## 5. 設計文書体系の参照
 具体的なドメイン仕様、Cloudflare 上でのアーキテクチャ、インフラ設定、採択済み ADR、運用手順については、すべて [docs/README.md](docs/README.md) を起点として段階的に参照すること。設計文書の規約（200行制限、自然言語と図のみの記述）を常に維持しなければならない。

@@ -10,6 +10,12 @@
 
 プラットフォーム制約（メモリ上限、タイムアウト、レート制限等）によるドメイン要件のスコープ調整は許容される。ただし、その場合であっても選択理由およびドメイン要件との対応関係を明確に記録しなければならない。
 
+## 実装言語の境界
+
+実装言語は [Implementation Language Policy](implementation-language.md) に従う。
+
+portable な DWH logic は Go を既定とし、Cloudflare Workers / Durable Objects の native adapter は TypeScript を使用する。
+
 ## 採用プラットフォームの構成
 
 本システムの主要実行基盤として **Cloudflare** を採用する。

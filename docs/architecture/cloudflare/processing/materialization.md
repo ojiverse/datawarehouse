@@ -4,11 +4,15 @@
 
 ## Materializer Runtime
 
-first-MVP の authoritative materializer には **PyIceberg + PyArrow** を使用する。
+first-MVP の materializer は **Apache Iceberg REST Catalog を標準境界とし、iceberg-go を第一候補として実装する**。
 
-Materializer は Workers の request CPU budget に依存させず、local batch、CI、専用 batch runtime 等の外部 process として実行可能にする。
+#36 technical spike では iceberg-go から R2 Data Catalog への接続、table create / commit、Parquet data file の登録、R2 SQL query、delete / rebuild を実証する。
 
-R2 Data Catalog の Iceberg REST Catalog と R2 の S3-compatible data access を使用し、Cloudflare 固有 runtime に materialization logic を閉じ込めない。
+#36 が成功した場合は Go materializer を採用する。失敗した場合は PyIceberg 等へ自動的に fallback せず、blocking reason を記録して設計へ戻す。
+
+Materializer は Workers の request CPU budget に依存させず、local batch、CI、専用 batch runtime 等の standalone process として実行可能にする。
+
+R2 Data Catalog の Iceberg REST Catalog と R2 の S3-compatible data access を利用し、Cloudflare 固有 runtime や特定言語 implementation を Canonical semantics の boundary にしない。
 
 Cloudflare Pipelines は将来の incremental acceleration 候補であり、first-MVP の rebuild correctness の前提にしない。
 
@@ -52,9 +56,9 @@ Crash 後は完成済み chunk を再生成せず、未完了 chunk から再開
 
 ## Iceberg Commit
 
-完成した staging Parquet file を PyIceberg から Iceberg table へ commit する。
+完成した staging Parquet file を Iceberg REST Catalog 経由で Iceberg table へ commit する。
 
-既存 data file の duplicate registration check を有効にし、commit retry によって同じ file を二重登録しない。
+iceberg-go を採用する場合も、commit retry によって同じ data file を二重登録しないことを invariant とする。
 
 Crash が Iceberg commit と control checkpoint の間で発生した場合は Catalog を再読込し、既に参照済みの data file を成功済みとして扱う。
 

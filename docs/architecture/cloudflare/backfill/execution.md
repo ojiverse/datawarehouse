@@ -2,6 +2,8 @@
 
 本書では first-MVP の HTTP Backfill を Cloudflare 上で中断・再開可能に実行する具体構成を定義する。
 
+Backfill API Worker、Backfill Channel Durable Object、Discord HTTP Budget Durable Object は **TypeScript** で実装する。
+
 ## Component Ownership
 
 Backfill の stateful coordination には SQLite-backed Durable Objects を使用する。

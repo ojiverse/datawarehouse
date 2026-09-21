@@ -15,6 +15,12 @@
     "cloudflare-observability": {
       "type": "http",
       "url": "https://observability.mcp.cloudflare.com/mcp"
+    },
+    "onepassword": {
+      "type": "stdio",
+      "command": "1password-mcp",
+      "args": [],
+      "env": {}
     }
   }
 }

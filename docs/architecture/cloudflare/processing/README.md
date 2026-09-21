@@ -10,9 +10,11 @@ Observation Archive が唯一の Source of Evidence であり、Canonical Store 
 
 ## first-MVP Materializer
 
-first-MVP の authoritative materializer には PyIceberg + PyArrow を使用する。
+first-MVP の materializer は Iceberg REST Catalog を interoperability boundary とし、**iceberg-go を第一候補として #36 で実証する**。
 
-materializer は Workers runtime の CPU budget に依存させず、local、CI、専用 batch runtime 等から R2 Data Catalog の Iceberg REST Catalog へ接続できる外部 process とする。
+#36 が成功した場合は Go materializer を採用する。失敗した場合は別 implementation へ自動的に切り替えず、blocking reason を記録して再設計する。
+
+materializer は Workers runtime の CPU budget に依存させず、local、CI、専用 batch runtime 等から R2 Data Catalog の Iceberg REST Catalog へ接続できる standalone process とする。
 
 詳細は [materialization.md](materialization.md) に定義する。
 
@@ -30,7 +32,7 @@ manifest、checkpoint、chunk state は専用 R2 control bucket に置き、Obse
 
 manifest chunk ごとに deterministic な staging Parquet file を生成し、completed chunk を durable に再利用できるようにする。
 
-PyIceberg commit retry では既に登録済み data file を二重登録しない。
+Iceberg commit retry では既に登録済み data file を二重登録しない。
 
 ## Incremental Trigger
 
@@ -44,11 +46,11 @@ trigger が欠損しても Archive listing と replay / rebuild により収束�
 
 Pipelines は将来の incremental materialization 候補とするが、first-MVP の authoritative rebuild mechanism には採用しない。
 
-Pipelines を停止・廃止しても PyIceberg materializer で Canonical を再構築できる状態を維持する。
+Pipelines を停止・廃止しても standalone Iceberg materializer で Canonical を再構築できる状態を維持する。
 
 ## 詳細設計
 
-* [materialization.md](materialization.md): PyIceberg runtime、rebuild manifest、checkpoint、Iceberg commit
+* [materialization.md](materialization.md): iceberg-go technical gate、rebuild manifest、checkpoint、Iceberg commit
 
 ## 今後分割する詳細設計
 

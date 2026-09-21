@@ -78,15 +78,17 @@ Local 実測の resource は次の通り（macOS arm64、Go 1.26.3、fixture 85 
 * **R2 SQL response の parse**: R2 SQL HTTP API の response body 形式は公式 doc に記載がないため、複数の形状を防御的に受理し、生 response の先頭を report に残す
 * **R2 SQL の比較範囲**: timestamp の JSON 表現が未文書化のため、R2 SQL 経由の比較は message_id / observation_id / content の identity set と COUNT に限定し、timestamp を含む完全一致は iceberg-go scan 側で検証する
 
-## R2 Real Environment の結果
+## R2 Real Environment の準備状況（2026-09-21）
 
-未実施。実行には次の入力が必要である。
+OJIverse account（`8df65b32589ad7acc6d3d257d5dd2d04`）に dev 用 resource を Cloudflare 公式 MCP 経由で作成した。本番 data を持つ bucket には触れていない。
 
-* Cloudflare account ID
-* R2 API token（Admin Read & Write、R2 Data Catalog と R2 SQL の permission を含む）と、同 token の S3 Access Key ID / Secret Access Key
-* Observation Archive 用 dev bucket と、catalog を有効化した Canonical 用 dev bucket の名前、および catalog URI / warehouse
+* Observation Archive: bucket `ojiverse-dwh-dev-observations`（APAC、default jurisdiction）
+* Canonical Store: bucket `ojiverse-dwh-dev-canonical`（APAC、default jurisdiction）。R2 Data Catalog を有効化済み
+* Warehouse: `8df65b32589ad7acc6d3d257d5dd2d04_ojiverse-dwh-dev-canonical`
+* Catalog URI: `https://catalog.cloudflarestorage.com/8df65b32589ad7acc6d3d257d5dd2d04/ojiverse-dwh-dev-canonical`（未認証 GET に対して 401 "Missing Authorization header" を返すことを確認）
+* Catalog の既定 maintenance: compaction enabled（target 128 MB、interval 1h）、snapshot expiration disabled。catalog 側の service credential は未登録（`credential_status: absent`）。spike の commit 検証には不要だが、managed compaction を実際に動かすには dashboard から登録が必要
 
-実行手順と環境変数は `cmd/dwh-spike/main.go` の package comment と `scripts/spike.sh` に記載する。実行後、本節を Success Criterion ごとの PASS / FAIL、R2 SQL の生 response 形状、vended credential の実際の挙動、観測した beta 制約で更新する。
+閉ループ実行は R2 API token（bearer + S3 key pair）を dashboard で発行してもらう必要があり未実施。実行手順と環境変数は `cmd/dwh-spike/main.go` の package comment と `scripts/spike.sh` に記載する。実行後、本節を Success Criterion ごとの PASS / FAIL、R2 SQL の生 response 形状、vended credential の実際の挙動、観測した beta 制約で更新する。
 
 ## 事前に把握している R2 側の制約（公式 doc 由来、未実測）
 

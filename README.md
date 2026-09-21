@@ -16,6 +16,16 @@
 * **厳格な来歴管理（Provenance）**: データが「いつ」「どの経路（Gateway / Backfill）で」「どのセッションやリクエストで」取得されたかを記録し、データの信頼性を保証する。
 * **抽象度の分離**: Discord DWH としての固有ロジック（ドメイン設計）を、実行基盤である Cloudflare 固有の設計から完全に分離する。
 
+## 実装言語
+
+本プロジェクトの既定実装言語は **Go** とする。
+
+Canonical materializer、replay / rebuild、CLI、validation、portable batch processing、Cloudflare 外 Gateway collector 等は原則 Go で実装する。
+
+Cloudflare Workers / Durable Objects の runtime API に密接に結合する component は **TypeScript** で実装する。言語統一だけを目的に Go / WebAssembly を Workers へ強制しない。
+
+詳細は [Implementation Language Policy](docs/architecture/implementation-language.md) と ADR-0014 を参照する。
+
 ## データフロー
 
 ```mermaid

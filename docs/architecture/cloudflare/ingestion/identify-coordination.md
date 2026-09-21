@@ -2,6 +2,8 @@
 
 本書では複数 Gateway Instance が共有する Discord application-wide Identify budget の coordination を定義する。
 
+Gateway Identify Coordinator Durable Object と external lease endpoint は **TypeScript** で実装する。
+
 ## Single Budget Owner
 
 Discord application ごとに1つの **Gateway Identify Coordinator Durable Object** を設ける。

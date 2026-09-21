@@ -46,7 +46,7 @@ apache/iceberg-rest-fixture + MinIO に対して閉ループは全項目 PASS �
 | Discord API へアクセスせず再生成 | PASS | Discord credential 環境変数が未設定であることを assert した上で Archive listing のみから再 materialize |
 | 再生成前後の domain data が一致 | PASS | 正規化 serialization の SHA-256 digest が一致（85 row）。chunk identity も一致 |
 | runtime constraint の記録 | PASS | 後述 |
-| beta 制約の記録 | PENDING | R2 real environment で実測する |
+| beta 制約の記録 | N/A | R2 real environment で実測する（後節） |
 
 Local 実測の resource は次の通り（macOS arm64、Go 1.26.3、fixture 85 row）。
 
@@ -96,18 +96,56 @@ OJIverse account（`8df65b32589ad7acc6d3d257d5dd2d04`）に dev 用 resource を
 
 環境変数の意味は `cmd/dwh-spike/main.go` の package comment に記載する。後片付けは同じ形で `scripts/spike.sh cleanup` を実行する。
 
-2026-09-21 時点で 1Password item の secret 3 つ（credential、S3 access key id、S3 secret access key）は `PLACEHOLDER_` の仮値であり、R2 API token を dashboard で発行して item に反映するまで閉ループは未実施である。実行後、本節を Success Criterion ごとの PASS / FAIL、R2 SQL の生 response 形状、vended credential の実際の挙動、観測した beta 制約で更新する。
+## R2 Real Environment の結果（2026-09-21 実測）
 
-## 事前に把握している R2 側の制約（公式 doc 由来、未実測）
+R2 API token（Admin Read & Write、TTL 1 週間）を 1Password 経由で注入し、上記コマンドで閉ループを 1 回で完走した（exit 0、retry なし）。R2 でのみ失敗した項目はなく、Failure Rule の発動は不要である。
 
-* R2 Data Catalog / R2 SQL は public / open beta
-* R2 SQL の query 結果は既定で 500 row に制限される（fixture は 85 row で収まる）
-* R2 SQL 用 token は R2 SQL Read、R2 Data Catalog、R2 Storage の permission を要する
-* R2 Data Catalog は非 default jurisdiction の bucket を未サポート
-* managed compaction は Parquet のみ対象、target size 64〜512 MB
+| Success Criterion | 結果 | 根拠 |
+| :--- | :--- | :--- |
+| Envelope v1 fixture を R2 Observation Archive へ保存 | PASS | S3 API の `If-None-Match: *` create-only put で 4 object を保存。再 put は 412 を受けて metadata 照合により idempotent success |
+| fixture から Canonical Message Parquet を生成 | PASS | R2 listing のみを入力に 85 row、ZSTD |
+| iceberg-go から R2 Data Catalog に接続 | PASS | bearer token のみで REST Catalog に接続 |
+| namespace / table を作成 | PASS | `dwh_spike.message`。table location は catalog 管理の `s3://<bucket>/__r2_data_catalog/<catalog uuid>/<table uuid>` |
+| Parquet data file を Iceberg table へ commit | PASS | vended credential で staging file を書き、AddFiles で snapshot 作成 |
+| commit retry で同じ data file を二重登録しない | PASS | 再読込後 retry は already_referenced、iceberg-go の AddFiles も拒否、snapshot 不変 |
+| R2 SQL から query | PASS | 85 row が projection の identity set と一致。COUNT(*) = 85。commit 直後の初回 query で整合し propagation retry は不要だった |
+| Canonical table を削除 | PASS | PurgeTable が受理され CheckTableExists = false |
+| Discord API へアクセスせず再生成 | PASS | Discord 環境変数未設定を assert し Archive listing のみから再 materialize |
+| 再生成前後の domain data が一致 | PASS | digest 一致（85 row）、chunk identity 一致。rebuild 後の R2 SQL も 85 row 一致 |
+| runtime constraint の記録 | PASS | 後述 |
+| beta 制約の記録 | PASS | 後述 |
+
+### vended credential の実挙動
+
+catalog property に S3 key を一切渡さず（`DWH_CATALOG_PROPS` 未設定）、bearer token だけで table の data file の書き込み・読み出しが成功した。iceberg-go が `X-Iceberg-Access-Delegation: vended-credentials` を送り、R2 Data Catalog が返す storage credential で FileIO を構成する経路が機能している。したがって materializer の credential は R2 API token 1 つで足り、S3 key pair は Observation Archive bucket へのアクセスにのみ必要である。
+
+### R2 SQL の response 形状（実測）
+
+Cloudflare v4 wrapper（success / errors / messages）の `result` 配下に `request_id`、`schema`（column ごとの name と型 descriptor、nullable）、`rows`（column 名を key とする object の配列）、`metrics`（r2_requests_count、files_scanned、bytes_scanned、cache_hits）を持つ。string / int64 は JSON の文字列 / 数値として返る。timestamp 型の表現は本 spike では比較対象にしていない。
+
+### 実測 resource / latency（macOS arm64 → R2 APAC、fixture 85 row）
+
+| 指標 | 値 |
+| :--- | :--- |
+| user / system CPU | 約 330 ms / 130 ms |
+| max RSS | 約 118 MB |
+| Archive put（4 object + retry） | 約 1.5 s |
+| catalog namespace + table 作成 | 約 7.5 s（初回）、rebuild 時 約 5.9 s |
+| staging 書き込み + commit | 約 2.4〜3.7 s |
+| iceberg-go scan | 約 0.6 s |
+| R2 SQL SELECT（初回 / 2 回目以降） | 約 19.8 s / 約 2.5 s |
+| drop（purge） | 約 0.6 s |
+
+閉ループ全体は約 60 s で、そのうち R2 SQL の初回 query が支配的である。
+
+### 観測した beta 制約
+
+* R2 SQL の初回 query は約 20 s かかり、以降は数秒に落ちる（cache_hits が増える）。interactive 用途では warm-up を前提にする
+* R2 SQL の metrics は data file 1 つの table でも files_scanned 5 を返す（metadata / manifest を含む）
+* table location は catalog が `__r2_data_catalog/` 配下の UUID path で決めるため、application 側で物理 path を契約にしない設計（r2/README.md）は正しかった
+* R2 SQL 結果の既定上限は 500 row。大きな検証は LIMIT / 集計で行う
+* catalog の managed compaction は既定で enabled（128 MB、1h）だが service credential 未登録のため実行されない。有効化すると staging file が rewrite され、data file path による重複判定の前提が変わる点は #40 で扱う
 
 ## 判定
 
-Local reference により、iceberg-go + 標準 Iceberg REST Catalog + Parquet/Zstandard の閉ループは技術的に成立した。
-
-#36 の Close 判定は R2 real environment で同じ loop が PASS した時点とする。R2 でのみ失敗する項目が出た場合は、本書に最小再現と分類を記録し、Failure Rule に従って #32 へ戻す。
+Local reference と R2 real environment の双方で、iceberg-go + Iceberg REST Catalog（R2 Data Catalog）+ Parquet/Zstandard + R2 SQL の閉ループが成立した。#36 の Definition of Done を満たしており、#40 は iceberg-go を first-MVP materializer implementation として進めてよい。

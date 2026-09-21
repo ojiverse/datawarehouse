@@ -88,7 +88,15 @@ OJIverse account（`8df65b32589ad7acc6d3d257d5dd2d04`）に dev 用 resource を
 * Catalog URI: `https://catalog.cloudflarestorage.com/8df65b32589ad7acc6d3d257d5dd2d04/ojiverse-dwh-dev-canonical`（未認証 GET に対して 401 "Missing Authorization header" を返すことを確認）
 * Catalog の既定 maintenance: compaction enabled（target 128 MB、interval 1h）、snapshot expiration disabled。catalog 側の service credential は未登録（`credential_status: absent`）。spike の commit 検証には不要だが、managed compaction を実際に動かすには dashboard から登録が必要
 
-閉ループ実行は R2 API token（bearer + S3 key pair）を dashboard で発行してもらう必要があり未実施。実行手順と環境変数は `cmd/dwh-spike/main.go` の package comment と `scripts/spike.sh` に記載する。実行後、本節を Success Criterion ごとの PASS / FAIL、R2 SQL の生 response 形状、vended credential の実際の挙動、観測した beta 制約で更新する。
+### 実行手順
+
+接続情報と secret は 1Password（ojilab account、vault `datawarehouse-dev`、item `cloudflare-r2-dwh-spike`）で管理し、`spike/r2-dev.op.env` に `op://` 参照だけを置く。実行は次のコマンドで行い、secret を shell history や repository に残さない。
+
+`op run --account ojilab --env-file spike/r2-dev.op.env -- scripts/spike.sh loop`
+
+環境変数の意味は `cmd/dwh-spike/main.go` の package comment に記載する。後片付けは同じ形で `scripts/spike.sh cleanup` を実行する。
+
+2026-09-21 時点で 1Password item の secret 3 つ（credential、S3 access key id、S3 secret access key）は `PLACEHOLDER_` の仮値であり、R2 API token を dashboard で発行して item に反映するまで閉ループは未実施である。実行後、本節を Success Criterion ごとの PASS / FAIL、R2 SQL の生 response 形状、vended credential の実際の挙動、観測した beta 制約で更新する。
 
 ## 事前に把握している R2 側の制約（公式 doc 由来、未実測）
 

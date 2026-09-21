@@ -30,3 +30,4 @@
 | [0012](0012-gateway-r2-acceptance-watermark.md) | **Gateway R2 acceptance watermark** | Received / Accepted Sequence を分離し、R2 commit 済み watermark から Resume | 承認（Accepted） |
 | [0013](0013-go-first-iceberg-materializer.md) | **Go-first Iceberg materializer** | Iceberg REST Catalog を固定境界とし、iceberg-go を第一候補として #36 で実証 | 承認（Accepted） |
 | [0014](0014-go-first-typescript-cloudflare-adapters.md) | **Go-first / TypeScript Cloudflare adapter** | DWH の既定言語を Go、Workers / Durable Objects の native adapter を TypeScript とする | 承認（Accepted） |
+| [0015](0015-json-schema-cross-language-contract.md) | **JSON Schema cross-language contract** | Observation Envelope の wire contract を JSON Schema + fixture に統一し、Protobuf は RPC 責務へ分離 | 承認（Accepted） |

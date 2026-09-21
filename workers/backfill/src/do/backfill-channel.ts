@@ -6,6 +6,7 @@ import { generateUuidV7, type Snowflake, type UuidV7 } from "../domain/ids";
 import type { RouteBucketState } from "../domain/rate-limit";
 import {
   isActiveState,
+  type PendingCoordination,
   type RunRecord,
   type RunState,
   type StartRunRequest,
@@ -43,6 +44,7 @@ type RunRow = {
   next_eligible_at: number;
   attempt: number;
   terminal_error: string | null;
+  pending_coordination: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -71,6 +73,10 @@ function rowToRun(row: RunRow): RunRecord {
     attempt: row.attempt,
     terminal_error:
       row.terminal_error === null ? null : (JSON.parse(row.terminal_error) as TerminalError),
+    pending_coordination:
+      row.pending_coordination === null
+        ? null
+        : (JSON.parse(row.pending_coordination) as PendingCoordination),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -122,7 +128,7 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
         "state TEXT NOT NULL, cursor_before TEXT, pages_archived INTEGER NOT NULL DEFAULT 0," +
         "last_archived_observation_id TEXT, last_archived_key TEXT," +
         "next_eligible_at INTEGER NOT NULL, attempt INTEGER NOT NULL DEFAULT 0," +
-        "terminal_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);" +
+        "terminal_error TEXT, pending_coordination TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);" +
         "CREATE UNIQUE INDEX IF NOT EXISTS runs_single_active ON runs(channel_id) WHERE state IN ('running','waiting');" +
         "CREATE TABLE IF NOT EXISTS route_buckets (route_key TEXT PRIMARY KEY, bucket TEXT, request_limit INTEGER," +
         "remaining INTEGER, reset_at INTEGER, observed_at INTEGER NOT NULL);",
@@ -225,7 +231,10 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
 
       let outcome: PageOutcome;
       try {
-        outcome = await executePage(this.ports, this.stepConfig, current);
+        outcome =
+          current.pending_coordination === null
+            ? await executePage(this.ports, this.stepConfig, current)
+            : await this.flushPendingCoordination(current, current.pending_coordination);
       } catch (error) {
         if (error instanceof InjectedCrash) throw error;
         outcome = {
@@ -242,6 +251,32 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
     if (isActiveState(current.state)) {
       await this.ctx.storage.setAlarm(current.next_eligible_at);
     }
+  }
+
+  /**
+   * Replays a safety-critical Budget report before any new Discord request. On success the
+   * deferred outcome (halt / fail / wait) is applied as if the report had landed the first time.
+   */
+  private async flushPendingCoordination(
+    run: RunRecord,
+    pending: PendingCoordination,
+  ): Promise<PageOutcome> {
+    try {
+      await this.ports.budget.report(pending.report);
+    } catch (error) {
+      return {
+        kind: "coordination_pending",
+        report: pending.report,
+        deferred_outcome: pending.deferred_outcome,
+        detail: `budget report still failing: ${error instanceof Error ? error.message : String(error)}`,
+        next_eligible_at: this.ports.clock.nowMs() + transientBackoffMs(run.attempt),
+      };
+    }
+    this.ctx.storage.sql.exec(
+      "UPDATE runs SET pending_coordination = NULL WHERE run_id = ?",
+      run.run_id,
+    );
+    return pending.deferred_outcome;
   }
 
   private applyOutcome(run: RunRecord, outcome: PageOutcome): RunRecord {
@@ -302,6 +337,29 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
       }
       case "terminal": {
         this.markTerminal(run, outcome.error);
+        break;
+      }
+      case "coordination_pending": {
+        const pending: PendingCoordination = {
+          report: outcome.report,
+          deferred_outcome: outcome.deferred_outcome,
+        };
+        sql.exec(
+          "UPDATE runs SET state = 'waiting', pending_coordination = ?, next_eligible_at = ?, attempt = attempt + 1, updated_at = ?" +
+            " WHERE run_id = ?",
+          JSON.stringify(pending),
+          outcome.next_eligible_at,
+          nowIso,
+          run.run_id,
+        );
+        console.error(
+          JSON.stringify({
+            event: "backfill_budget_coordination_pending",
+            run_id: run.run_id,
+            status: outcome.report.status,
+            detail: outcome.detail,
+          }),
+        );
         break;
       }
     }

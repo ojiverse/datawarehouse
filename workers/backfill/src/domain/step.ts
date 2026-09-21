@@ -2,7 +2,7 @@ import type { ArchiveObject } from "../observation/archive-object";
 import { buildArchiveObject } from "../observation/archive-object";
 import type { HttpCapabilities } from "../observation/envelope";
 import { buildHttpBackfillEnvelope } from "../observation/envelope";
-import type { BackfillPorts, DiscordHttpResponse } from "../ports";
+import type { BackfillPorts, DiscordHttpResponse, RequestReport } from "../ports";
 import { ArchiveInvariantViolation, InjectedCrash } from "../ports";
 import { classifyStatus, countsAsInvalidRequest } from "./classify";
 import { advanceCursor } from "./cursor";
@@ -14,7 +14,13 @@ import {
   retryAfterMsFor429,
   routeBucketFromHeaders,
 } from "./rate-limit";
-import { nextRequestBefore, type RunRecord, type TerminalError, transientBackoffMs } from "./run";
+import {
+  type DeferredOutcome,
+  nextRequestBefore,
+  type RunRecord,
+  type TerminalError,
+  transientBackoffMs,
+} from "./run";
 
 /**
  * One page of the Page Commit Order (execution.md):
@@ -54,6 +60,17 @@ export type PageOutcome =
   | {
       readonly kind: "terminal";
       readonly error: TerminalError;
+    }
+  | {
+      /**
+       * A safety-critical report could not reach the Budget owner. The caller persists the
+       * report and the deferred outcome, issues no request, and retries the report first.
+       */
+      readonly kind: "coordination_pending";
+      readonly report: RequestReport;
+      readonly deferred_outcome: DeferredOutcome;
+      readonly detail: string;
+      readonly next_eligible_at: number;
     };
 
 export const ROUTE_KEY_CHANNEL_MESSAGES = "GET /channels/{channel_id}/messages";
@@ -83,7 +100,7 @@ function terminal(
   status: number | null,
   message: string,
   occurredAtMs: number,
-): PageOutcome {
+): DeferredOutcome & { readonly kind: "terminal" } {
   return {
     kind: "terminal",
     error: {
@@ -95,27 +112,58 @@ function terminal(
   };
 }
 
-async function reportQuietly(
-  ports: BackfillPorts,
-  response: DiscordHttpResponse,
-  retryAfterMs: number | null,
-) {
+function reportFor(response: DiscordHttpResponse, retryAfterMs: number | null): RequestReport {
+  return {
+    status: response.status,
+    scope: response.rate_limit.scope,
+    global: response.rate_limit.global,
+    retry_after_ms: retryAfterMs,
+  };
+}
+
+/**
+ * Advisory report (2xx, 5xx): the Budget owner only uses it for diagnostics, so a failed
+ * delivery must not block durable progress.
+ */
+async function reportAdvisory(ports: BackfillPorts, response: DiscordHttpResponse) {
   try {
-    await ports.budget.report({
-      status: response.status,
-      scope: response.rate_limit.scope,
-      global: response.rate_limit.global,
-      retry_after_ms: retryAfterMs,
-    });
+    await ports.budget.report(reportFor(response, null));
   } catch (error) {
-    // Budget bookkeeping is advisory; losing one report must not block durable progress.
     console.warn(
       JSON.stringify({
         event: "budget_report_failed",
+        status: response.status,
         error: error instanceof Error ? error.message : String(error),
       }),
     );
   }
+}
+
+/**
+ * Fail-closed report for 401 / 403 / 429. These feed the application-wide invalid-request
+ * budget, the global pause and the credential halt; if the owner cannot record them the run
+ * must stop issuing requests and replay the report before doing anything else.
+ */
+async function reportSafetyCritical(
+  ports: BackfillPorts,
+  run: RunRecord,
+  response: DiscordHttpResponse,
+  retryAfterMs: number | null,
+  deferred: DeferredOutcome,
+): Promise<PageOutcome> {
+  const report = reportFor(response, retryAfterMs);
+  try {
+    await ports.budget.report(report);
+  } catch (error) {
+    return {
+      kind: "coordination_pending",
+      report,
+      deferred_outcome: deferred,
+      detail: `budget report failed: ${error instanceof Error ? error.message : String(error)}`,
+      next_eligible_at: ports.clock.nowMs() + transientBackoffMs(run.attempt),
+    };
+  }
+  return deferred;
 }
 
 export async function executePage(
@@ -160,7 +208,7 @@ export async function executePage(
 
   switch (classifyStatus(response.status)) {
     case "success": {
-      await reportQuietly(ports, response, null);
+      await reportAdvisory(ports, response);
       ports.faults.check("after_fetch_before_archive");
 
       let payload: unknown;
@@ -227,33 +275,43 @@ export async function executePage(
         body = null;
       }
       const retryAfterMs = retryAfterMsFor429(response.rate_limit, body);
-      await reportQuietly(ports, response, retryAfterMs);
-      return {
+      const outcome = await reportSafetyCritical(ports, run, response, retryAfterMs, {
         kind: "deferred",
         reason: "rate_limited",
         detail: `429 scope=${response.rate_limit.scope ?? "unknown"} invalid=${countsAsInvalidRequest(429, response.rate_limit.scope)}`,
         next_eligible_at: completedAt + retryAfterMs,
-        route_bucket: routeBucket,
-      };
+        route_bucket: null,
+      });
+      return outcome.kind === "deferred" ? { ...outcome, route_bucket: routeBucket } : outcome;
     }
     case "credential_failure":
-      await reportQuietly(ports, response, null);
-      return terminal(
-        "credential_failure",
-        response.status,
-        "Discord rejected the bot credential",
-        completedAt,
+      return reportSafetyCritical(
+        ports,
+        run,
+        response,
+        null,
+        terminal(
+          "credential_failure",
+          response.status,
+          "Discord rejected the bot credential",
+          completedAt,
+        ),
       );
     case "scope_forbidden":
-      await reportQuietly(ports, response, null);
-      return terminal(
-        "scope_inaccessible",
-        response.status,
-        "channel history is not accessible",
-        completedAt,
+      return reportSafetyCritical(
+        ports,
+        run,
+        response,
+        null,
+        terminal(
+          "scope_inaccessible",
+          response.status,
+          "channel history is not accessible",
+          completedAt,
+        ),
       );
     case "scope_not_found":
-      await reportQuietly(ports, response, null);
+      await reportAdvisory(ports, response);
       return terminal(
         "scope_not_found",
         response.status,
@@ -261,7 +319,7 @@ export async function executePage(
         completedAt,
       );
     case "client_error":
-      await reportQuietly(ports, response, null);
+      await reportAdvisory(ports, response);
       return terminal(
         "invalid_request",
         response.status,
@@ -269,7 +327,7 @@ export async function executePage(
         completedAt,
       );
     case "server_error":
-      await reportQuietly(ports, response, null);
+      await reportAdvisory(ports, response);
       return {
         kind: "retry",
         detail: `discord ${response.status}`,

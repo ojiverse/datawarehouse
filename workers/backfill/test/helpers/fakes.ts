@@ -127,6 +127,8 @@ export class FakeDiscord implements DiscordMessagesClient {
 export class FakeBudget implements BudgetGate {
   readonly reports: RequestReport[] = [];
   decision: BudgetDecision = { granted: true };
+  /** When set, report() rejects with this error (simulates an unreachable Budget owner). */
+  reportFailure: Error | null = null;
   acquires = 0;
 
   async acquire(): Promise<BudgetDecision> {
@@ -135,6 +137,7 @@ export class FakeBudget implements BudgetGate {
   }
 
   async report(report: RequestReport): Promise<void> {
+    if (this.reportFailure) throw this.reportFailure;
     this.reports.push(report);
   }
 }

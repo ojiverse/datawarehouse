@@ -37,6 +37,7 @@ function run(overrides: Partial<RunRecord> = {}): RunRecord {
     next_eligible_at: 0,
     attempt: 0,
     terminal_error: null,
+    pending_coordination: null,
     created_at: "2026-09-21T00:00:00.000Z",
     updated_at: "2026-09-21T00:00:00.000Z",
     ...overrides,
@@ -187,13 +188,46 @@ describe("executePage", () => {
     expect(outcome).toMatchObject({ kind: "terminal", error: { kind: "invalid_request" } });
   });
 
-  it("does not crash the step when the budget report fails", async () => {
+  it("keeps a 2xx page when the advisory budget report fails", async () => {
     const h = harness();
-    h.budget.report = async () => {
-      throw new Error("budget unreachable");
-    };
+    h.budget.reportFailure = new Error("budget unreachable");
     const outcome = await executePage(h.ports, config, run());
     expect(outcome.kind).toBe("archived");
+  });
+});
+
+describe("executePage — fail-closed budget coordination", () => {
+  it.each([
+    [401, { kind: "terminal", error: { kind: "credential_failure" } }],
+    [403, { kind: "terminal", error: { kind: "scope_inaccessible" } }],
+    [429, { kind: "deferred", reason: "rate_limited" }],
+  ] as const)(
+    "holds the %i outcome until the Budget owner has recorded it",
+    async (status, deferred) => {
+      const h = harness();
+      h.budget.reportFailure = new Error("budget unreachable");
+      h.discord.enqueue({
+        kind: "status",
+        status,
+        body: status === 429 ? { retry_after: 1.5 } : {},
+        headers: status === 429 ? { scope: "user" } : {},
+      });
+      const outcome = await executePage(h.ports, config, run({ attempt: 0 }));
+      expect(outcome.kind).toBe("coordination_pending");
+      if (outcome.kind !== "coordination_pending") return;
+      expect(outcome.report).toMatchObject({ status });
+      expect(outcome.deferred_outcome).toMatchObject(deferred);
+      expect(outcome.next_eligible_at).toBeGreaterThan(h.clock.nowMs());
+      expect(h.archive.objects).toHaveLength(0);
+    },
+  );
+
+  it("applies the 401 outcome directly once the report succeeds", async () => {
+    const h = harness();
+    h.discord.enqueue({ kind: "status", status: 401 });
+    const outcome = await executePage(h.ports, config, run());
+    expect(outcome).toMatchObject({ kind: "terminal", error: { kind: "credential_failure" } });
+    expect(h.budget.reports).toHaveLength(1);
   });
 });
 

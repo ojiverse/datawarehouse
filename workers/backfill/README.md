@@ -46,6 +46,17 @@ Run states are `running`, `waiting` (rate-limit or budget pause), `completed`, `
 failure). A halt also flips the Budget object so every other Channel stops issuing requests
 until an operator clears the halt after rotating the token.
 
+## Budget coordination is fail-closed
+
+Reports of 401, 403 and 429 responses feed application-wide state in the Budget object (the
+invalid-request budget, the global pause and the credential halt). When such a report cannot be
+delivered, the Channel does not act on the response locally and does not issue another Discord
+request. Instead it stores the report and the outcome it would have applied as a pending
+coordination in SQLite, moves to `waiting`, and on each following Alarm retries the report first.
+Only once the Budget object has recorded the report is the deferred outcome applied (halt, fail
+or wait). Pending coordination survives restarts because it lives in the run record. Reports of
+2xx and 5xx responses remain advisory: a failed delivery is logged and progress continues.
+
 ## Configuration
 
 Variables are declared in `wrangler.jsonc`; secrets are injected with `wrangler secret put` and
@@ -66,13 +77,27 @@ never committed.
 ## Development
 
 Install dependencies with pnpm from the repository root, then run `pnpm lint`, `pnpm typecheck`
-and `pnpm test`. Tests execute inside workerd through the Cloudflare Vitest plugin with an
-isolated R2 bucket and Durable Object storage per test. The fault-injection suite in
+and `pnpm test`. Tests execute inside workerd through the Cloudflare Vitest plugin; each test
+uses its own Durable Object name and purges the miniflare R2 bucket before asserting on object
+counts. The fault-injection suite in
 `test/do/backfill-channel.test.ts` is the reproducible proof required by the issue's Definition
 of Done: it terminates execution after the HTTP fetch, after the R2 write, and after the
 progress update, duplicates Alarm execution, injects 429 / 401 / 403 / 5xx responses and
 evicts the Durable Object, and asserts that every page ends up in the Archive exactly as the
 design predicts.
 
-Deploy with `wrangler deploy --env dev` after creating the observation bucket declared in
-`wrangler.jsonc` and setting both secrets.
+## Real Discord smoke procedure (dev)
+
+Automated tests run against fakes and miniflare only. A one-off smoke against real Discord
+needs the following inputs, none of which are stored in the repository:
+
+* an R2 bucket named `ojiverse-dwh-observations-dev` in the target Cloudflare account;
+* the secret `DISCORD_BOT_TOKEN` (bot with `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` on the
+  target Channel) set with `wrangler secret put DISCORD_BOT_TOKEN --env dev`;
+* the secret `BACKFILL_API_TOKEN` set with `wrangler secret put BACKFILL_API_TOKEN --env dev`;
+* a DWH-public test Guild / Channel pair to crawl.
+
+Then deploy with `wrangler deploy --env dev`, start a run through `POST /v1/backfill/runs`
+with a small `page_limit`, poll `GET /v1/backfill/channels/{channel_id}` until the state is
+`completed`, and confirm the objects under `observations/v1/source=http_backfill/` in the bucket
+and the route bucket values recorded in the run's provenance.

@@ -46,6 +46,33 @@ export type ArchivedPageRef = {
   readonly archive_key: string;
 };
 
+/**
+ * A safety-critical Budget report (401 / 403 / 429) that could not be delivered, together with
+ * the outcome that must be applied once it is. While this is set the run issues no Discord
+ * request: the invalid-request budget and the global pause are shared state, and acting
+ * before the owner has recorded them would let every other Channel keep going.
+ */
+export type PendingCoordination = {
+  readonly report: {
+    readonly status: number;
+    readonly scope: "user" | "global" | "shared" | null;
+    readonly global: boolean;
+    readonly retry_after_ms: number | null;
+  };
+  readonly deferred_outcome: DeferredOutcome;
+};
+
+/** Serialisable subset of the page outcome that a pending coordination replays later. */
+export type DeferredOutcome =
+  | { readonly kind: "terminal"; readonly error: TerminalError }
+  | {
+      readonly kind: "deferred";
+      readonly reason: "rate_limited";
+      readonly detail: string;
+      readonly next_eligible_at: number;
+      readonly route_bucket: null;
+    };
+
 export type RunRecord = {
   readonly run_id: UuidV7;
   readonly guild_id: Snowflake;
@@ -65,6 +92,7 @@ export type RunRecord = {
   /** Consecutive transient failures since the last successful page. */
   readonly attempt: number;
   readonly terminal_error: TerminalError | null;
+  readonly pending_coordination: PendingCoordination | null;
   readonly created_at: string;
   readonly updated_at: string;
 };

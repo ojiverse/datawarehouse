@@ -326,6 +326,98 @@ describe("BackfillChannelDurableObject — fault injection", () => {
   });
 });
 
+describe("BackfillChannelDurableObject — fail-closed budget coordination", () => {
+  it("401 with an unreachable Budget owner: no further Discord request until the report lands, then halts", async () => {
+    const h = await harness("400");
+    await h.start();
+    h.budget.reportFailure = new Error("budget unreachable");
+    h.discord.enqueue({ kind: "status", status: 401 });
+
+    await h.alarm();
+    let run = await currentRun(h);
+    expect(run.state).toBe("waiting");
+    expect(run.pending_coordination?.report.status).toBe(401);
+    expect(run.attempt).toBe(1);
+    expect(h.discord.requests).toHaveLength(1);
+    expect(await h.scheduledAlarm()).toBe(run.next_eligible_at);
+
+    h.clock.set(run.next_eligible_at);
+    await h.alarm();
+    run = await currentRun(h);
+    expect(run.state).toBe("waiting");
+    expect(run.attempt).toBe(2);
+    expect(h.discord.requests).toHaveLength(1);
+    expect(h.budget.reports).toHaveLength(0);
+
+    h.budget.reportFailure = null;
+    h.clock.set(run.next_eligible_at);
+    await h.alarm();
+    run = await currentRun(h);
+    expect(run.state).toBe("halted");
+    expect(run.pending_coordination).toBeNull();
+    expect(run.terminal_error?.kind).toBe("credential_failure");
+    expect(h.budget.reports.map((r) => r.status)).toEqual([401]);
+    expect(h.discord.requests).toHaveLength(1);
+    expect(await h.scheduledAlarm()).toBeNull();
+  });
+
+  it("429 with an unreachable Budget owner: waits, records the pause once reachable, then continues", async () => {
+    const h = await harness("401");
+    await h.start();
+    h.budget.reportFailure = new Error("budget unreachable");
+    h.discord.enqueue({
+      kind: "status",
+      status: 429,
+      body: { retry_after: 2 },
+      headers: { scope: "global", global: true },
+    });
+
+    await h.alarm();
+    let run = await currentRun(h);
+    expect(run.state).toBe("waiting");
+    expect(run.pending_coordination?.report).toMatchObject({
+      status: 429,
+      global: true,
+      retry_after_ms: 2_000,
+    });
+    expect(await archived()).toHaveLength(0);
+
+    h.budget.reportFailure = null;
+    h.clock.set(run.next_eligible_at);
+    await h.alarm();
+    run = await currentRun(h);
+    expect(run.pending_coordination).toBeNull();
+    expect(h.budget.reports.map((r) => r.status)).toEqual([429]);
+    expect(h.discord.requests).toHaveLength(1);
+
+    h.clock.set(run.next_eligible_at);
+    await h.alarm();
+    run = await currentRun(h);
+    expect(run.state).toBe("completed");
+    expect(await archived()).toHaveLength(3);
+  });
+
+  it("pending coordination survives a runtime restart", async () => {
+    const h = await harness("402");
+    await h.start();
+    h.budget.reportFailure = new Error("budget unreachable");
+    h.discord.enqueue({ kind: "status", status: 403 });
+    await h.alarm();
+    expect((await currentRun(h)).pending_coordination?.report.status).toBe(403);
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    h.budget.reportFailure = null;
+    h.clock.set((await currentRun(h)).next_eligible_at);
+    await h.alarm();
+    const run = await currentRun(h);
+    expect(run.state).toBe("failed");
+    expect(run.terminal_error?.kind).toBe("scope_inaccessible");
+    expect(h.budget.reports.map((r) => r.status)).toEqual([403]);
+    expect(h.discord.requests).toHaveLength(1);
+  });
+});
+
 describe("BackfillChannelDurableObject — classification and archive safety", () => {
   it("401 halts the run and reports the credential failure", async () => {
     const h = await harness("300");

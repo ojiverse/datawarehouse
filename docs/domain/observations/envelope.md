@@ -4,6 +4,8 @@
 
 物理的な JSON encoding、compression、R2 key layout は Architecture / Infrastructure で定義する。
 
+Go / TypeScript 間で共有する physical JSON field contract は `contracts/observation-envelope/v1/schema.json` を Source of Truth とする。Domain 文書は field の意味論を定義し、JSON Schema は field name、required / nullable、shape を定義する。
+
 ## 共通 Envelope
 
 すべての Observation は、少なくとも以下の意味を保持する。

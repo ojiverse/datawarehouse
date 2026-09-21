@@ -2,6 +2,12 @@
 
 本書では first-MVP における Observation Archive から Apache Iceberg Canonical Store への materialization と rebuild の実行方式を定義する。
 
+## Implementation Language
+
+Materializer、Archive replay、full rebuild、semantic validation は **Go** で実装する。
+
+Cloudflare runtime へ依存しない standalone process とし、言語境界は Apache Iceberg REST Catalog、Parquet、Observation Envelope 等の標準・versioned contract に置く。
+
 ## Materializer Runtime
 
 first-MVP の materializer は **Apache Iceberg REST Catalog を標準境界とし、iceberg-go を第一候補として実装する**。

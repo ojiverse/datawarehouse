@@ -21,11 +21,7 @@
     },
     "source_kind": {
       "type": "string",
-      "enum": [
-        "http_backfill",
-        "http_reconciliation",
-        "gateway"
-      ]
+      "enum": ["http_backfill", "http_reconciliation", "gateway"]
     },
     "observed_at": {
       "type": "string",
@@ -41,15 +37,10 @@
       "if": {
         "properties": {
           "source_kind": {
-            "enum": [
-              "http_backfill",
-              "http_reconciliation"
-            ]
+            "enum": ["http_backfill", "http_reconciliation"]
           }
         },
-        "required": [
-          "source_kind"
-        ]
+        "required": ["source_kind"]
       },
       "then": {
         "properties": {
@@ -65,10 +56,7 @@
   ],
   "$defs": {
     "nullable_snowflake": {
-      "type": [
-        "string",
-        "null"
-      ],
+      "type": ["string", "null"],
       "pattern": "^[0-9]+$"
     },
     "http_provenance": {
@@ -115,10 +103,7 @@
         },
         "pagination": {
           "type": "object",
-          "required": [
-            "before",
-            "after"
-          ],
+          "required": ["before", "after"],
           "properties": {
             "before": {
               "$ref": "#/$defs/nullable_snowflake"
@@ -147,9 +132,7 @@
         },
         "capabilities": {
           "type": "object",
-          "required": [
-            "message_content"
-          ],
+          "required": ["message_content"],
           "properties": {
             "message_content": {
               "type": "boolean"
@@ -158,39 +141,22 @@
         },
         "rate_limit": {
           "type": "object",
-          "required": [
-            "limit",
-            "remaining",
-            "reset_after_seconds",
-            "bucket"
-          ],
+          "required": ["limit", "remaining", "reset_after_seconds", "bucket"],
           "properties": {
             "limit": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             },
             "remaining": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             },
             "reset_after_seconds": {
-              "type": [
-                "number",
-                "null"
-              ],
+              "type": ["number", "null"],
               "minimum": 0
             },
             "bucket": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         }

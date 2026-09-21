@@ -18,8 +18,10 @@ TypeScript, as required by the Implementation Language Policy.
 * **Domain modules** (`src/domain`): pure pagination, rate-limit, status classification and the
   page commit order, independent of Cloudflare APIs.
 * **Observation modules** (`src/observation`): Envelope v1 construction and the physical R2 object
-  (key layout, gzip, SHA-256, metadata). The shared contract fixture lives in
-  `contracts/observation-envelope/v1`.
+  (key layout, gzip, SHA-256, metadata). The authoritative wire contract is
+  `contracts/observation-envelope/v1/schema.json` (ADR-0015); the TypeScript envelope type is an
+  implementation artifact of it, and `test/observation/schema.test.ts` validates every producer
+  output against the schema and the shared fixture.
 * **Adapters** (`src/adapters`): Discord HTTP client, create-only R2 writer, Budget RPC client.
 
 ## Page commit order

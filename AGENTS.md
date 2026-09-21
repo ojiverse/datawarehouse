@@ -23,5 +23,10 @@
 
 既定実装言語は Go とし、Cloudflare Workers / Durable Objects の native runtime adapter に限って TypeScript を使用する。言語選択を実装者の好みで変更してはならない。Production dependency として別言語を追加する場合は ADR を要求する。
 
-## 5. 設計文書体系の参照
+## 5. Cross-language Contract の遵守
+Go と TypeScript の双方が扱う Observation Envelope を実装する場合は、必ず [docs/architecture/data-contracts.md](docs/architecture/data-contracts.md) と `contracts/observation-envelope/v1/schema.json` を確認すること。
+
+Go struct や TypeScript type を独立した schema authority として扱ってはならない。versioned fixture を両言語の compatibility test で共有し、永続 contract の field 名・nullability・shape を実装者が独自に変更してはならない。
+
+## 6. 設計文書体系の参照
 具体的なドメイン仕様、Cloudflare 上でのアーキテクチャ、インフラ設定、採択済み ADR、運用手順については、すべて [docs/README.md](docs/README.md) を起点として段階的に参照すること。設計文書の規約（200行制限、自然言語と図のみの記述）を常に維持しなければならない。

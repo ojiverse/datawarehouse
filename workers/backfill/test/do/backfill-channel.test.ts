@@ -418,6 +418,100 @@ describe("BackfillChannelDurableObject — fail-closed budget coordination", () 
   });
 });
 
+describe("BackfillChannelDurableObject — pending coordination is crash-safe after the report lands", () => {
+  async function pendingAfterFailedReport(
+    channel: string,
+    scripted: Parameters<FakeDiscord["enqueue"]>[0],
+  ) {
+    const h = await harness(channel);
+    await h.start();
+    h.budget.reportFailure = new Error("budget unreachable");
+    h.discord.enqueue(scripted);
+    await h.alarm();
+    const run = await currentRun(h);
+    expect(run.pending_coordination).not.toBeNull();
+    h.budget.reportFailure = null;
+    h.clock.set(run.next_eligible_at);
+    return h;
+  }
+
+  it("401: crash after the report succeeded but before the halt is stored → restart converges to halted without a new request", async () => {
+    const h = await pendingAfterFailedReport("500", { kind: "status", status: 401 });
+    h.faults.arm("after_coordination_report_before_transition");
+    await expect(h.alarm()).rejects.toBeInstanceOf(InjectedCrash);
+
+    let run = await currentRun(h);
+    expect(h.budget.reports.map((r) => r.status)).toEqual([401]);
+    expect(run.state).toBe("waiting");
+    expect(run.pending_coordination?.report.status).toBe(401);
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    h.clock.set(Math.max(h.clock.nowMs(), (await currentRun(h)).next_eligible_at));
+    await h.alarm();
+
+    run = await currentRun(h);
+    expect(run.state).toBe("halted");
+    expect(run.terminal_error?.kind).toBe("credential_failure");
+    expect(run.pending_coordination).toBeNull();
+    expect(h.discord.requests).toHaveLength(1);
+    expect(await h.scheduledAlarm()).toBeNull();
+  });
+
+  it("429: crash after the report succeeded but before the pause is stored → restart converges to waiting and never requests early", async () => {
+    const h = await pendingAfterFailedReport("501", {
+      kind: "status",
+      status: 429,
+      body: { retry_after: 30 },
+      headers: { scope: "user" },
+    });
+    const responseAt = (await currentRun(h)).pending_coordination?.deferred_outcome;
+    if (responseAt?.kind !== "deferred") throw new Error("expected a deferred 429 outcome");
+    const retryUntil = responseAt.next_eligible_at;
+
+    h.faults.arm("after_coordination_report_before_transition");
+    await expect(h.alarm()).rejects.toBeInstanceOf(InjectedCrash);
+    expect(h.budget.reports.map((r) => r.status)).toEqual([429]);
+    expect((await currentRun(h)).pending_coordination).not.toBeNull();
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    await h.alarm();
+
+    let run = await currentRun(h);
+    expect(run.state).toBe("waiting");
+    expect(run.pending_coordination).toBeNull();
+    expect(run.next_eligible_at).toBe(retryUntil);
+    expect(h.discord.requests).toHaveLength(1);
+    expect(await h.scheduledAlarm()).toBe(retryUntil);
+
+    await h.alarmDirect();
+    expect(h.discord.requests).toHaveLength(1);
+
+    h.clock.set(retryUntil);
+    await h.alarm();
+    run = await currentRun(h);
+    expect(run.state).toBe("completed");
+    expect(await archived()).toHaveLength(3);
+  });
+
+  it("403: crash after the report succeeded → restart converges to failed with the pending cleared", async () => {
+    const h = await pendingAfterFailedReport("502", { kind: "status", status: 403 });
+    h.faults.arm("after_coordination_report_before_transition");
+    await expect(h.alarm()).rejects.toBeInstanceOf(InjectedCrash);
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    h.clock.set(Math.max(h.clock.nowMs(), (await currentRun(h)).next_eligible_at));
+    await h.alarm();
+
+    const run = await currentRun(h);
+    expect(run.state).toBe("failed");
+    expect(run.pending_coordination).toBeNull();
+    expect(h.discord.requests).toHaveLength(1);
+  });
+});
+
 describe("BackfillChannelDurableObject — classification and archive safety", () => {
   it("401 halts the run and reports the credential failure", async () => {
     const h = await harness("300");

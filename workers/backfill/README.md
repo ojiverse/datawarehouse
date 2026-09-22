@@ -56,7 +56,9 @@ delivered, the Channel does not act on the response locally and does not issue a
 request. Instead it stores the report and the outcome it would have applied as a pending
 coordination in SQLite, moves to `waiting`, and on each following Alarm retries the report first.
 Only once the Budget object has recorded the report is the deferred outcome applied (halt, fail
-or wait). Pending coordination survives restarts because it lives in the run record. Reports of
+or wait); clearing the pending record and storing that outcome happen in one SQLite
+transaction, so a crash after the report succeeded can only replay the report, never lose the
+outcome. Pending coordination survives restarts because it lives in the run record. Reports of
 2xx and 5xx responses remain advisory: a failed delivery is logged and progress continues.
 
 ## Configuration

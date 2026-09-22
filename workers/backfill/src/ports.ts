@@ -97,7 +97,8 @@ export interface Clock {
 export type FaultPoint =
   | "after_fetch_before_archive"
   | "after_archive_before_progress"
-  | "after_progress_before_alarm";
+  | "after_progress_before_alarm"
+  | "after_coordination_report_before_transition";
 
 /** Thrown by a FaultInjector; must propagate untouched so it behaves like a runtime termination. */
 export class InjectedCrash extends Error {

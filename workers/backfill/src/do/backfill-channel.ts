@@ -255,7 +255,8 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
 
   /**
    * Replays a safety-critical Budget report before any new Discord request. On success the
-   * deferred outcome (halt / fail / wait) is applied as if the report had landed the first time.
+   * pending record is left in place; clearing it and applying the deferred outcome happen
+   * together in applyOutcome so that a crash between the two cannot lose the outcome.
    */
   private async flushPendingCoordination(
     run: RunRecord,
@@ -272,11 +273,8 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
         next_eligible_at: this.ports.clock.nowMs() + transientBackoffMs(run.attempt),
       };
     }
-    this.ctx.storage.sql.exec(
-      "UPDATE runs SET pending_coordination = NULL WHERE run_id = ?",
-      run.run_id,
-    );
-    return pending.deferred_outcome;
+    this.ports.faults.check("after_coordination_report_before_transition");
+    return { kind: "coordination_resolved", deferred_outcome: pending.deferred_outcome };
   }
 
   private applyOutcome(run: RunRecord, outcome: PageOutcome): RunRecord {
@@ -337,6 +335,25 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
       }
       case "terminal": {
         this.markTerminal(run, outcome.error);
+        break;
+      }
+      case "coordination_resolved": {
+        // One transaction: the run must never be observed with the pending cleared but the
+        // deferred 401 / 403 / 429 outcome not yet applied (that would allow a new request).
+        this.ctx.storage.transactionSync(() => {
+          sql.exec("UPDATE runs SET pending_coordination = NULL WHERE run_id = ?", run.run_id);
+          const deferred = outcome.deferred_outcome;
+          if (deferred.kind === "terminal") {
+            this.markTerminal(run, deferred.error);
+          } else {
+            sql.exec(
+              "UPDATE runs SET state = 'waiting', next_eligible_at = ?, updated_at = ? WHERE run_id = ?",
+              deferred.next_eligible_at,
+              nowIso,
+              run.run_id,
+            );
+          }
+        });
         break;
       }
       case "coordination_pending": {

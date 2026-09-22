@@ -71,6 +71,15 @@ export type PageOutcome =
       readonly deferred_outcome: DeferredOutcome;
       readonly detail: string;
       readonly next_eligible_at: number;
+    }
+  | {
+      /**
+       * A pending report has now been recorded by the Budget owner. The caller must clear the
+       * pending coordination and apply the deferred outcome in one storage transaction, so a
+       * crash in between can never leave the run without the outcome.
+       */
+      readonly kind: "coordination_resolved";
+      readonly deferred_outcome: DeferredOutcome;
     };
 
 export const ROUTE_KEY_CHANNEL_MESSAGES = "GET /channels/{channel_id}/messages";

@@ -3,16 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json && tsc -p test/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p test/tsconfig.json && tsc -p scripts/tsconfig.json",
     "test": "vitest run",
     "dev": "wrangler dev",
     "deploy:dev": "wrangler deploy --env dev",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "generate:cross-language-fixture": "node --experimental-strip-types scripts/generate-cross-language-archive-fixture.ts"
   },
   "devDependencies": {
     "@cfworker/json-schema": "^4.1.1",
     "@cloudflare/vitest-plugin": "^1.1.13",
     "@cloudflare/workers-types": "^5.20260921.1",
+    "@types/node": "^26.6.2",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0",
     "wrangler": "^4.135.0"

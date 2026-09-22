@@ -94,6 +94,17 @@ progress update, duplicates Alarm execution, injects 429 / 401 / 403 / 5xx respo
 evicts the Durable Object, and asserts that every page ends up in the Archive exactly as the
 design predicts.
 
+## Cross-language replay proof (#38)
+
+`scripts/generate-cross-language-archive-fixture.ts` runs `buildArchiveObject` (the real gzip +
+SHA-256 + R2 metadata path) against the shared `contracts/observation-envelope/v1/http-backfill-page.json`
+fixture and writes the resulting bytes to `internal/archive/testdata/ts_producer/`. The Go replay
+reader (`internal/archive`) decodes those exact bytes as its cross-language integration proof, so
+the two implementations are checked against real producer output, not only schema-level fixture
+compatibility. Regenerate with `pnpm run generate:cross-language-fixture` after changing the
+Envelope or Archive object encoding; only the decoded content matters; the gzip bytes themselves
+are expected to change on every regeneration because gzip embeds a timestamp.
+
 ## Real Discord smoke procedure (dev)
 
 Automated tests run against fakes and miniflare only. A one-off smoke against real Discord

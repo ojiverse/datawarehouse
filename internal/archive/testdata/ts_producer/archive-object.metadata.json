@@ -1,0 +1,16 @@
+{
+  "key": "observations/v1/source=http_backfill/year=2026/month=09/day=21/hour=10/0199a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b.json.gz",
+  "observation_id": "0199a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b",
+  "custom_metadata": {
+    "format": "observation-envelope-json",
+    "compression": "gzip",
+    "envelope_version": "v1",
+    "observation_id": "0199a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a2b",
+    "source_kind": "http_backfill",
+    "payload_sha256": "c73352036c9dce67f58e80694af491af734a4e92f0368942104b3eadbea29d38"
+  },
+  "http_metadata": {
+    "contentType": "application/json",
+    "contentEncoding": "gzip"
+  }
+}

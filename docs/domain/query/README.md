@@ -26,8 +26,18 @@ Historical State at T は「Discord が実際に T 時点で持っていた完�
 * **エンティティ関係性の追跡**: スレッドと親チャンネル、メッセージと添付ファイル・リアクションの関連性分析。
 * **生データへのドリルダウン**: 集計結果から根拠となった生の Observation まで辿れるトレーサビリティの提供。
 
+## first-MVP の Query Semantics（Issue #41）
+
+first-MVP の Canonical Message は、materializer が Observation Archive から best-known state を Message ID ごとに 1 件へ deterministic に導出済みである（`docs/domain/processing/projection.md`）。したがって first-MVP の Query API は Canonical Store を単純な等価・範囲・集計で問い合わせるのみで best-known state の投影を担わず、Current State / Historical State の投影規則そのものは引き続き将来の詳細設計課題とする。
+
+時刻基準は 2 種類あり、区別して扱う。
+
+* **Discord 作成時刻**（Canonical の `created_at`）: Discord が返す Message の作成時刻。first-MVP の作成時刻 range filter はこの列を対象とする。
+* **観測時刻**（Canonical の `observed_at`）: best-known state 選定にのみ用いる内部時刻で、first-MVP の Query API では filter 対象にしない。
+
+Snowflake ID（`message_id` / `channel_id` / `author_id` / `guild_id`）は decimal string のまま扱い、集計・フィルタの等価比較も文字列として行う。
+
 ## 分割予定の詳細設計
 
 * **Current State Projection**: 編集・削除イベントを畳み込んで最新状態を導出する計算規則
 * **Historical Projection**: 指定したタイムスタンプ（Point-in-Time）時点の状態を再現するクエリセマンティクス
-* **Query Semantics**: 集計やフィルタリングにおける Snowflake ID の扱いと時刻基準（Discord 作成時刻 vs 観測時刻）の定義

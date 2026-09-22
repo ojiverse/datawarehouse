@@ -39,6 +39,7 @@ op run --account ojilab --env-file spike/r2-dev.op.env -- scripts/spike.sh loop
 ## 実装コード
 
 * [workers/backfill](workers/backfill/README.md): HTTP Backfill API Worker、Backfill Channel Durable Object、Discord HTTP Budget Durable Object の TypeScript 実装（Issue #37）
+* [workers/query](workers/query/README.md): R2 SQL を用いた Query API Worker の TypeScript 実装（Issue #41）
 * [contracts/observation-envelope/v1](contracts/observation-envelope/v1/README.md): Go / TypeScript 間で共有する Observation Envelope v1 の互換性 fixture
 
 ## データフロー

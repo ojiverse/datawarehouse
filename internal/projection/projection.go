@@ -72,6 +72,34 @@ func Project(envs []observation.Envelope) ([]CanonicalMessage, error) {
 	return out, nil
 }
 
+// Reduce merges already-projected row groups (for example the local winners
+// produced by calling Project on disjoint chunks of the same Observation set)
+// into the same result Project would produce over the union of their inputs.
+//
+// This holds because newer defines a strict total order over candidates for a
+// given Message ID (no two distinct Observations tie: the final tie-break is
+// Observation ID inequality), so picking the max within each group and then
+// the max across group maxima is equivalent to picking the max over the
+// union. Reduce lets a resumable materializer project chunks independently
+// and combine the results without re-deriving Current State from scratch.
+func Reduce(groups ...[]CanonicalMessage) []CanonicalMessage {
+	best := make(map[string]CanonicalMessage)
+	for _, g := range groups {
+		for _, cand := range g {
+			cur, ok := best[cand.MessageID]
+			if !ok || newer(cand, cur) {
+				best[cand.MessageID] = cand
+			}
+		}
+	}
+	out := make([]CanonicalMessage, 0, len(best))
+	for _, c := range best {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].MessageID < out[j].MessageID })
+	return out
+}
+
 // newer applies the precedence: edited_timestamp, then observed_at, then
 // Observation UUID value. Returns true when a should replace b.
 func newer(a, b CanonicalMessage) bool {

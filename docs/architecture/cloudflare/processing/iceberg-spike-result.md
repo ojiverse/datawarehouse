@@ -113,9 +113,9 @@ OJIverse account（`8df65b32589ad7acc6d3d257d5dd2d04`）に dev 用 resource を
 
 環境変数の意味は `cmd/dwh-spike/main.go` の package comment に記載する。後片付けは同じ形で `scripts/spike.sh cleanup` を実行する。
 
-## R2 Real Environment の結果（2026-09-21 初回、2026-09-22 shared fixture 込みで再実測）
+## R2 Real Environment の結果（2026-09-21 初回、2026-09-22 09:39〜09:41 JST に schema 準拠版で最終実測）
 
-R2 API token（Admin Read & Write、TTL 1 週間）を 1Password 経由で注入し、上記コマンドで閉ループを完走した（両日とも exit 0、retry なし）。以下は shared contract fixture を含む 2026-09-22 の結果である。R2 でのみ失敗した項目はなく、Failure Rule の発動は不要である。
+R2 API token（Admin Read & Write、TTL 1 週間）を 1Password 経由で注入し、上記コマンドで閉ループを完走した（3 回とも exit 0、retry なし）。以下は authoritative JSON Schema に揃えた Go 実装（ADR-0015 対応後）で、main の compatibility fixture を入力に含めた 2026-09-22 09:39 JST 開始の最終実行の結果である。R2 でのみ失敗した項目はなく、Failure Rule の発動は不要である。
 
 | Success Criterion | 結果 | 根拠 |
 | :--- | :--- | :--- |
@@ -140,20 +140,20 @@ catalog property に S3 key を一切渡さず（`DWH_CATALOG_PROPS` 未設定�
 
 Cloudflare v4 wrapper（success / errors / messages）の `result` 配下に `request_id`、`schema`（column ごとの name と型 descriptor、nullable）、`rows`（column 名を key とする object の配列）、`metrics`（r2_requests_count、files_scanned、bytes_scanned、cache_hits）を持つ。string / int64 は JSON の文字列 / 数値として返る。timestamp 型の表現は本 spike では比較対象にしていない。
 
-### 実測 resource / latency（macOS arm64 → R2 APAC、2 回の実行の範囲）
+### 実測 resource / latency（macOS arm64 → R2 APAC、3 回の実行の範囲）
 
 | 指標 | 値 |
 | :--- | :--- |
 | user / system CPU | 約 300〜330 ms / 100〜130 ms |
-| max RSS | 約 118 MB |
-| Archive put（4〜5 object + retry） | 約 1.3〜1.5 s |
-| catalog namespace + table 作成 | 約 3.9〜7.5 s |
+| max RSS | 約 118〜123 MB |
+| Archive put（4〜5 object + retry） | 約 1.3〜4.0 s |
+| catalog namespace + table 作成 | 約 2.5〜9.8 s |
 | staging 書き込み + commit | 約 2.4〜5.6 s |
-| iceberg-go scan | 約 0.6〜0.8 s |
+| iceberg-go scan | 約 0.5〜0.8 s |
 | R2 SQL（SELECT + COUNT、1 criterion 分） | 約 6〜26 s。cold な初回 SELECT が 約 10〜20 s、warm な query は 約 2.5 s |
-| drop（purge） | 約 0.6〜1.6 s |
+| drop（purge） | 約 0.6〜6.3 s |
 
-閉ループ全体は約 60〜65 s で、そのうち R2 SQL の cold query が支配的である。実行ごとのばらつきは R2 SQL 側が大きく、Go process 側は安定している。
+閉ループ全体は約 60〜75 s で、そのうち R2 SQL の cold query が支配的である。実行ごとのばらつきは R2 側（catalog、purge、R2 SQL）が大きく、Go process 側の CPU / memory は安定している。
 
 ### 観測した beta 制約
 

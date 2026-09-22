@@ -1,0 +1,20 @@
+{
+  "name": "@ojiverse/backfill-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p test/tsconfig.json",
+    "test": "vitest run",
+    "dev": "wrangler dev",
+    "deploy:dev": "wrangler deploy --env dev",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@cloudflare/vitest-plugin": "^1.1.13",
+    "@cloudflare/workers-types": "^5.20260921.1",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.135.0"
+  }
+}

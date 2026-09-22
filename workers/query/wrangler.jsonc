@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ojiverse-dwh-query",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ENVIRONMENT": "dev",
+    "R2_SQL_ACCOUNT_ID": "",
+    "R2_SQL_BUCKET": "",
+    "R2_SQL_NAMESPACE": "dwh",
+    "R2_SQL_TABLE": "message",
+    "QUERY_DEFAULT_PAGE_LIMIT": "100",
+    "QUERY_MAX_PAGE_LIMIT": "500"
+  },
+  "observability": { "enabled": true },
+  "env": {
+    "dev": {
+      "vars": {
+        "ENVIRONMENT": "dev",
+        "R2_SQL_ACCOUNT_ID": "8df65b32589ad7acc6d3d257d5dd2d04",
+        "R2_SQL_BUCKET": "ojiverse-dwh-dev-canonical",
+        "R2_SQL_NAMESPACE": "dwh",
+        "R2_SQL_TABLE": "message",
+        "QUERY_DEFAULT_PAGE_LIMIT": "100",
+        "QUERY_MAX_PAGE_LIMIT": "500"
+      }
+    }
+  }
+}

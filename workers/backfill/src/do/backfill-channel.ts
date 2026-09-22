@@ -135,9 +135,27 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
     );
   }
 
-  /** Test hook: swaps ports / config. Only reachable through runInDurableObject. */
-  useTestPorts(ports: Partial<BackfillPorts>, config?: Partial<StepConfig>): void {
-    this.ports = { ...this.ports, ...ports };
+  /**
+   * Test hook: swaps ports / config. Only reachable through runInDurableObject.
+   * `budget_object_name` builds a real Budget client from this object's own binding, because
+   * workerd forbids using a stub that another context created.
+   */
+  useTestPorts(
+    ports: Partial<BackfillPorts>,
+    config?: Partial<StepConfig>,
+    options?: { readonly budget_object_name?: string },
+  ): void {
+    const budget =
+      options?.budget_object_name === undefined
+        ? {}
+        : {
+            budget: new BudgetDurableObjectClient(
+              this.env.DISCORD_HTTP_BUDGET.get(
+                this.env.DISCORD_HTTP_BUDGET.idFromName(options.budget_object_name),
+              ),
+            ),
+          };
+    this.ports = { ...this.ports, ...ports, ...budget };
     this.stepConfig = { ...this.stepConfig, ...config };
   }
 
@@ -245,6 +263,9 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
       }
       current = this.applyOutcome(current, outcome);
       this.ports.faults.check("after_progress_before_alarm");
+      // A freshly recorded safety-critical response is delivered to the Budget owner in the
+      // same alarm (next iteration flushes it); a failed delivery waits for the backoff.
+      if (outcome.kind === "coordination_pending" && !outcome.retry) continue;
       if (outcome.kind !== "archived" || outcome.completed) break;
     }
 
@@ -271,6 +292,7 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
         deferred_outcome: pending.deferred_outcome,
         detail: `budget report still failing: ${error instanceof Error ? error.message : String(error)}`,
         next_eligible_at: this.ports.clock.nowMs() + transientBackoffMs(run.attempt),
+        retry: true,
       };
     }
     this.ports.faults.check("after_coordination_report_before_transition");
@@ -362,10 +384,11 @@ export class BackfillChannelDurableObject extends DurableObject<Env> {
           deferred_outcome: outcome.deferred_outcome,
         };
         sql.exec(
-          "UPDATE runs SET state = 'waiting', pending_coordination = ?, next_eligible_at = ?, attempt = attempt + 1, updated_at = ?" +
+          "UPDATE runs SET state = 'waiting', pending_coordination = ?, next_eligible_at = ?, attempt = attempt + ?, updated_at = ?" +
             " WHERE run_id = ?",
           JSON.stringify(pending),
           outcome.next_eligible_at,
+          outcome.retry ? 1 : 0,
           nowIso,
           run.run_id,
         );

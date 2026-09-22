@@ -6,7 +6,7 @@ import type { BackfillPorts, DiscordHttpResponse, RequestReport } from "../ports
 import { ArchiveInvariantViolation, InjectedCrash } from "../ports";
 import { classifyStatus, countsAsInvalidRequest } from "./classify";
 import { advanceCursor } from "./cursor";
-import { generateUuidV7, parseSnowflake, type Snowflake } from "./ids";
+import { generateUuidV7, parseSnowflake, type Snowflake, type UuidV7 } from "./ids";
 import {
   nextEligibleAfterSuccess,
   type RateLimitedBody,
@@ -71,6 +71,8 @@ export type PageOutcome =
       readonly deferred_outcome: DeferredOutcome;
       readonly detail: string;
       readonly next_eligible_at: number;
+      /** false when freshly recorded (deliver right away), true after a failed delivery. */
+      readonly retry: boolean;
     }
   | {
       /**
@@ -121,8 +123,13 @@ function terminal(
   };
 }
 
-function reportFor(response: DiscordHttpResponse, retryAfterMs: number | null): RequestReport {
+function reportFor(
+  reportId: UuidV7,
+  response: DiscordHttpResponse,
+  retryAfterMs: number | null,
+): RequestReport {
   return {
+    report_id: reportId,
     status: response.status,
     scope: response.rate_limit.scope,
     global: response.rate_limit.global,
@@ -134,9 +141,13 @@ function reportFor(response: DiscordHttpResponse, retryAfterMs: number | null): 
  * Advisory report (2xx, 5xx): the Budget owner only uses it for diagnostics, so a failed
  * delivery must not block durable progress.
  */
-async function reportAdvisory(ports: BackfillPorts, response: DiscordHttpResponse) {
+async function reportAdvisory(
+  ports: BackfillPorts,
+  reportId: UuidV7,
+  response: DiscordHttpResponse,
+) {
   try {
-    await ports.budget.report(reportFor(response, null));
+    await ports.budget.report(reportFor(reportId, response, null));
   } catch (error) {
     console.warn(
       JSON.stringify({
@@ -149,30 +160,26 @@ async function reportAdvisory(ports: BackfillPorts, response: DiscordHttpRespons
 }
 
 /**
- * Fail-closed report for 401 / 403 / 429. These feed the application-wide invalid-request
- * budget, the global pause and the credential halt; if the owner cannot record them the run
- * must stop issuing requests and replay the report before doing anything else.
+ * Fail-closed handling for 401 / 403 / 429. These feed the application-wide invalid-request
+ * budget, the global pause and the credential halt, so the response is first recorded as a
+ * pending coordination (durably, by the caller) and only then reported. The report therefore
+ * survives any crash and is re-sent with the same `report_id`, which the owner deduplicates.
  */
-async function reportSafetyCritical(
+function safetyCritical(
   ports: BackfillPorts,
-  run: RunRecord,
+  reportId: UuidV7,
   response: DiscordHttpResponse,
   retryAfterMs: number | null,
   deferred: DeferredOutcome,
-): Promise<PageOutcome> {
-  const report = reportFor(response, retryAfterMs);
-  try {
-    await ports.budget.report(report);
-  } catch (error) {
-    return {
-      kind: "coordination_pending",
-      report,
-      deferred_outcome: deferred,
-      detail: `budget report failed: ${error instanceof Error ? error.message : String(error)}`,
-      next_eligible_at: ports.clock.nowMs() + transientBackoffMs(run.attempt),
-    };
-  }
-  return deferred;
+): PageOutcome {
+  return {
+    kind: "coordination_pending",
+    report: reportFor(reportId, response, retryAfterMs),
+    deferred_outcome: deferred,
+    detail: `${response.status} recorded; awaiting budget coordination`,
+    next_eligible_at: ports.clock.nowMs(),
+    retry: false,
+  };
 }
 
 export async function executePage(
@@ -193,6 +200,8 @@ export async function executePage(
   }
 
   const before = nextRequestBefore(run);
+  // Fixed before the request so that every report about this response shares one identity.
+  const reportId = generateUuidV7(nowMs, ports.clock.randomBytes);
   let response: DiscordHttpResponse;
   try {
     response = await ports.discord.fetchChannelMessages({
@@ -217,7 +226,7 @@ export async function executePage(
 
   switch (classifyStatus(response.status)) {
     case "success": {
-      await reportAdvisory(ports, response);
+      await reportAdvisory(ports, reportId, response);
       ports.faults.check("after_fetch_before_archive");
 
       let payload: unknown;
@@ -284,19 +293,18 @@ export async function executePage(
         body = null;
       }
       const retryAfterMs = retryAfterMsFor429(response.rate_limit, body);
-      const outcome = await reportSafetyCritical(ports, run, response, retryAfterMs, {
+      return safetyCritical(ports, reportId, response, retryAfterMs, {
         kind: "deferred",
         reason: "rate_limited",
         detail: `429 scope=${response.rate_limit.scope ?? "unknown"} invalid=${countsAsInvalidRequest(429, response.rate_limit.scope)}`,
         next_eligible_at: completedAt + retryAfterMs,
         route_bucket: null,
       });
-      return outcome.kind === "deferred" ? { ...outcome, route_bucket: routeBucket } : outcome;
     }
     case "credential_failure":
-      return reportSafetyCritical(
+      return safetyCritical(
         ports,
-        run,
+        reportId,
         response,
         null,
         terminal(
@@ -307,9 +315,9 @@ export async function executePage(
         ),
       );
     case "scope_forbidden":
-      return reportSafetyCritical(
+      return safetyCritical(
         ports,
-        run,
+        reportId,
         response,
         null,
         terminal(
@@ -320,7 +328,7 @@ export async function executePage(
         ),
       );
     case "scope_not_found":
-      await reportAdvisory(ports, response);
+      await reportAdvisory(ports, reportId, response);
       return terminal(
         "scope_not_found",
         response.status,
@@ -328,7 +336,7 @@ export async function executePage(
         completedAt,
       );
     case "client_error":
-      await reportAdvisory(ports, response);
+      await reportAdvisory(ports, reportId, response);
       return terminal(
         "invalid_request",
         response.status,
@@ -336,7 +344,7 @@ export async function executePage(
         completedAt,
       );
     case "server_error":
-      await reportAdvisory(ports, response);
+      await reportAdvisory(ports, reportId, response);
       return {
         kind: "retry",
         detail: `discord ${response.status}`,

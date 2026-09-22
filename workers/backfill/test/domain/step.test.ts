@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Snowflake, UuidV7 } from "../../src/domain/ids";
+import { parseUuidV7, type Snowflake, type UuidV7 } from "../../src/domain/ids";
 import type { RunRecord } from "../../src/domain/run";
 import { executePage } from "../../src/domain/step";
 import type { ArchiveObject } from "../../src/observation/archive-object";
@@ -89,7 +89,7 @@ describe("executePage", () => {
     if (outcome.kind === "deferred") expect(outcome.next_eligible_at).toBe(h.clock.nowMs() + 400);
   });
 
-  it("pauses per Retry-After on 429 and archives nothing", async () => {
+  it("records a 429 as pending coordination carrying the Retry-After pause", async () => {
     const h = harness();
     h.discord.enqueue({
       kind: "status",
@@ -98,30 +98,36 @@ describe("executePage", () => {
       headers: { scope: "user" },
     });
     const outcome = await executePage(h.ports, config, run());
-    expect(outcome.kind).toBe("deferred");
-    if (outcome.kind !== "deferred") return;
-    expect(outcome.reason).toBe("rate_limited");
-    expect(outcome.next_eligible_at).toBe(h.clock.nowMs() + 2500);
+    expect(outcome.kind).toBe("coordination_pending");
+    if (outcome.kind !== "coordination_pending") return;
+    expect(outcome.report).toMatchObject({ status: 429, scope: "user", retry_after_ms: 2500 });
+    expect(outcome.deferred_outcome).toMatchObject({ kind: "deferred", reason: "rate_limited" });
+    if (outcome.deferred_outcome.kind === "deferred") {
+      expect(outcome.deferred_outcome.next_eligible_at).toBe(h.clock.nowMs() + 2500);
+    }
     expect(h.archive.objects).toHaveLength(0);
-    expect(h.budget.reports[0]).toMatchObject({ status: 429, scope: "user", retry_after_ms: 2500 });
   });
 
-  it("halts on 401", async () => {
+  it("records a 401 as pending coordination with a credential-failure outcome", async () => {
     const h = harness();
     h.discord.enqueue({ kind: "status", status: 401 });
     const outcome = await executePage(h.ports, config, run());
     expect(outcome).toMatchObject({
-      kind: "terminal",
-      error: { kind: "credential_failure", http_status: 401 },
+      kind: "coordination_pending",
+      report: { status: 401 },
+      deferred_outcome: {
+        kind: "terminal",
+        error: { kind: "credential_failure", http_status: 401 },
+      },
     });
   });
 
-  it("fails the scope on 403 and 404", async () => {
+  it("records a 403 as pending coordination and fails 404 directly", async () => {
     const h = harness();
     h.discord.enqueue({ kind: "status", status: 403 }, { kind: "status", status: 404 });
     expect(await executePage(h.ports, config, run())).toMatchObject({
-      kind: "terminal",
-      error: { kind: "scope_inaccessible" },
+      kind: "coordination_pending",
+      deferred_outcome: { kind: "terminal", error: { kind: "scope_inaccessible" } },
     });
     expect(await executePage(h.ports, config, run())).toMatchObject({
       kind: "terminal",
@@ -202,10 +208,9 @@ describe("executePage — fail-closed budget coordination", () => {
     [403, { kind: "terminal", error: { kind: "scope_inaccessible" } }],
     [429, { kind: "deferred", reason: "rate_limited" }],
   ] as const)(
-    "holds the %i outcome until the Budget owner has recorded it",
+    "records a %i response as pending coordination without reporting it itself",
     async (status, deferred) => {
       const h = harness();
-      h.budget.reportFailure = new Error("budget unreachable");
       h.discord.enqueue({
         kind: "status",
         status,
@@ -216,18 +221,30 @@ describe("executePage — fail-closed budget coordination", () => {
       expect(outcome.kind).toBe("coordination_pending");
       if (outcome.kind !== "coordination_pending") return;
       expect(outcome.report).toMatchObject({ status });
+      expect(parseUuidV7(outcome.report.report_id)).toBe(outcome.report.report_id);
       expect(outcome.deferred_outcome).toMatchObject(deferred);
-      expect(outcome.next_eligible_at).toBeGreaterThan(h.clock.nowMs());
+      expect(outcome.retry).toBe(false);
+      expect(h.budget.reports).toHaveLength(0);
       expect(h.archive.objects).toHaveLength(0);
     },
   );
 
-  it("applies the 401 outcome directly once the report succeeds", async () => {
+  it("fixes the report identity before the request, so a refetch is a different report", async () => {
     const h = harness();
-    h.discord.enqueue({ kind: "status", status: 401 });
-    const outcome = await executePage(h.ports, config, run());
-    expect(outcome).toMatchObject({ kind: "terminal", error: { kind: "credential_failure" } });
+    h.discord.enqueue({ kind: "status", status: 401 }, { kind: "status", status: 401 });
+    const first = await executePage(h.ports, config, run());
+    const second = await executePage(h.ports, config, run());
+    if (first.kind !== "coordination_pending" || second.kind !== "coordination_pending") {
+      throw new Error("expected pending coordination");
+    }
+    expect(first.report.report_id).not.toBe(second.report.report_id);
+  });
+
+  it("tags advisory 2xx reports with the same identity scheme", async () => {
+    const h = harness();
+    await executePage(h.ports, config, run());
     expect(h.budget.reports).toHaveLength(1);
+    expect(parseUuidV7(h.budget.reports[0]?.report_id)).toBeDefined();
   });
 });
 

@@ -1,4 +1,9 @@
-import { compareSnowflakes, type Snowflake } from "../../src/domain/ids";
+import {
+  compareSnowflakes,
+  generateUuidV7,
+  type Snowflake,
+  type UuidV7,
+} from "../../src/domain/ids";
 import { EMPTY_RATE_LIMIT_HEADERS, type RateLimitHeaders } from "../../src/domain/rate-limit";
 import type {
   BudgetDecision,
@@ -15,6 +20,15 @@ import { InjectedCrash } from "../../src/ports";
 
 export function snowflake(value: number | bigint | string): Snowflake {
   return String(value) as Snowflake;
+}
+
+let reportCounter = 0;
+
+/** Fresh, unique report identity for tests that talk to the Budget owner directly. */
+export function reportId(): UuidV7 {
+  reportCounter += 1;
+  const seed = reportCounter;
+  return generateUuidV7(Date.now(), (n) => new Uint8Array(n).map((_, i) => (seed * 31 + i) % 256));
 }
 
 /**

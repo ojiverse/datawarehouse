@@ -50,7 +50,9 @@ export class DiscordHttpBudgetDurableObject extends DurableObject<Env> {
         "CREATE INDEX IF NOT EXISTS request_slots_ts ON request_slots(ts_ms);" +
         "CREATE TABLE IF NOT EXISTS invalid_requests (ts_ms INTEGER NOT NULL);" +
         "CREATE INDEX IF NOT EXISTS invalid_requests_ts ON invalid_requests(ts_ms);" +
-        "CREATE TABLE IF NOT EXISTS budget_state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS budget_state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);" +
+        "CREATE TABLE IF NOT EXISTS processed_reports (report_id TEXT PRIMARY KEY, ts_ms INTEGER NOT NULL);" +
+        "CREATE INDEX IF NOT EXISTS processed_reports_ts ON processed_reports(ts_ms);",
     );
   }
 
@@ -85,6 +87,11 @@ export class DiscordHttpBudgetDurableObject extends DurableObject<Env> {
     );
     this.ctx.storage.sql.exec(
       "DELETE FROM invalid_requests WHERE ts_ms <= ?",
+      nowMs - this.invalidWindowMs,
+    );
+    // Processed ids only need to outlive the window in which a duplicate could still matter.
+    this.ctx.storage.sql.exec(
+      "DELETE FROM processed_reports WHERE ts_ms <= ?",
       nowMs - this.invalidWindowMs,
     );
   }
@@ -148,9 +155,26 @@ export class DiscordHttpBudgetDurableObject extends DurableObject<Env> {
     });
   }
 
+  /**
+   * Idempotent on `report_id`: a Channel that crashed after this call succeeded re-sends the
+   * same report, and counting it twice would drain the safety budget early.
+   */
   async report(report: RequestReport): Promise<void> {
     const nowMs = this.now();
     this.ctx.storage.transactionSync(() => {
+      this.prune(nowMs);
+      const seen = this.ctx.storage.sql
+        .exec<{ n: number }>(
+          "SELECT COUNT(*) AS n FROM processed_reports WHERE report_id = ?",
+          report.report_id,
+        )
+        .one();
+      if (seen.n > 0) return;
+      this.ctx.storage.sql.exec(
+        "INSERT INTO processed_reports (report_id, ts_ms) VALUES (?, ?)",
+        report.report_id,
+        nowMs,
+      );
       if (countsAsInvalidRequest(report.status, report.scope)) {
         this.ctx.storage.sql.exec("INSERT INTO invalid_requests (ts_ms) VALUES (?)", nowMs);
       }

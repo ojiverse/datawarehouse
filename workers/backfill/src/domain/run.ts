@@ -54,6 +54,7 @@ export type ArchivedPageRef = {
  */
 export type PendingCoordination = {
   readonly report: {
+    readonly report_id: UuidV7;
     readonly status: number;
     readonly scope: "user" | "global" | "shared" | null;
     readonly global: boolean;

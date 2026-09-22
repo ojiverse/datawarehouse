@@ -6,6 +6,7 @@ import {
 } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { BackfillChannelDurableObject, StartResult } from "../../src/do/backfill-channel";
+import type { DiscordHttpBudgetDurableObject } from "../../src/do/discord-http-budget";
 import type { StartRunRequest } from "../../src/domain/run";
 import { channelObjectName } from "../../src/env";
 import { InjectedCrash } from "../../src/ports";
@@ -509,6 +510,128 @@ describe("BackfillChannelDurableObject — pending coordination is crash-safe af
     expect(run.state).toBe("failed");
     expect(run.pending_coordination).toBeNull();
     expect(h.discord.requests).toHaveLength(1);
+  });
+});
+
+describe("BackfillChannelDurableObject — report re-send after a crash is idempotent on the real Budget DO", () => {
+  /** Channel harness whose budget port is the real Budget Durable Object (own instance per test). */
+  async function harnessWithRealBudget(channel: string) {
+    const h = await harness(channel);
+    const budgetStub = env.DISCORD_HTTP_BUDGET.get(
+      env.DISCORD_HTTP_BUDGET.idFromName(`test-budget-${channel}`),
+    );
+    await runInDurableObject(budgetStub, (instance: DiscordHttpBudgetDurableObject) => {
+      instance.useClock(() => h.clock.nowMs());
+    });
+    const install = async () => {
+      await runInDurableObject(h.stub, (instance: BackfillChannelDurableObject) => {
+        instance.useTestPorts({ discord: h.discord, clock: h.clock, faults: h.faults }, undefined, {
+          budget_object_name: `test-budget-${channel}`,
+        });
+      });
+    };
+    await install();
+    return { ...h, install, budgetStub };
+  }
+
+  it("401: the re-sent report is a no-op and the run still halts", async () => {
+    const h = await harnessWithRealBudget("600");
+    await h.start();
+    h.discord.enqueue({ kind: "status", status: 401 });
+    h.faults.arm("after_coordination_report_before_transition");
+    await expect(h.alarm()).rejects.toBeInstanceOf(InjectedCrash);
+
+    let snapshot = await h.budgetStub.snapshot();
+    expect(snapshot.invalid_in_window).toBe(1);
+    expect(snapshot.credential_halt_at).not.toBeNull();
+    expect((await currentRun(h)).pending_coordination?.report.status).toBe(401);
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    h.clock.advance(5_000);
+    await h.alarm();
+
+    snapshot = await h.budgetStub.snapshot();
+    expect(snapshot.invalid_in_window).toBe(1);
+    const run = await currentRun(h);
+    expect(run.state).toBe("halted");
+    expect(run.pending_coordination).toBeNull();
+    expect(h.discord.requests).toHaveLength(1);
+  });
+
+  it("403: the re-sent report does not double-count the invalid-request budget", async () => {
+    const h = await harnessWithRealBudget("601");
+    await h.start();
+    h.discord.enqueue({ kind: "status", status: 403 });
+    h.faults.arm("after_coordination_report_before_transition");
+    await expect(h.alarm()).rejects.toBeInstanceOf(InjectedCrash);
+    expect((await h.budgetStub.snapshot()).invalid_in_window).toBe(1);
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    h.clock.advance(5_000);
+    await h.alarm();
+
+    expect((await h.budgetStub.snapshot()).invalid_in_window).toBe(1);
+    const run = await currentRun(h);
+    expect(run.state).toBe("failed");
+    expect(run.terminal_error?.kind).toBe("scope_inaccessible");
+    expect(run.pending_coordination).toBeNull();
+    expect(h.discord.requests).toHaveLength(1);
+  });
+
+  it("global 429: the re-sent report does not extend global_retry_until, and the run waits for the original deadline", async () => {
+    const h = await harnessWithRealBudget("602");
+    await h.start();
+    h.discord.enqueue({
+      kind: "status",
+      status: 429,
+      body: { retry_after: 30, global: true },
+      headers: { scope: "global", global: true },
+    });
+    h.faults.arm("after_coordination_report_before_transition");
+    await expect(h.alarm()).rejects.toBeInstanceOf(InjectedCrash);
+
+    const first = await h.budgetStub.snapshot();
+    expect(first.invalid_in_window).toBe(1);
+    expect(first.global_retry_until).not.toBeNull();
+    const pending = (await currentRun(h)).pending_coordination;
+    if (pending?.deferred_outcome.kind !== "deferred")
+      throw new Error("expected a deferred 429 outcome");
+    const deadline = pending.deferred_outcome.next_eligible_at;
+
+    await evictDurableObject(h.stub);
+    await h.install();
+    h.clock.advance(5_000);
+    await h.alarm();
+
+    const second = await h.budgetStub.snapshot();
+    expect(second.global_retry_until).toBe(first.global_retry_until);
+    expect(second.invalid_in_window).toBe(1);
+    const run = await currentRun(h);
+    expect(run.state).toBe("waiting");
+    expect(run.pending_coordination).toBeNull();
+    expect(run.next_eligible_at).toBe(deadline);
+    expect(h.discord.requests).toHaveLength(1);
+
+    h.clock.set(deadline);
+    await h.alarm();
+    expect((await currentRun(h)).state).toBe("completed");
+    expect(h.discord.requests).toHaveLength(4);
+  });
+
+  it("a genuine refetch after a transient failure is a new report, not a duplicate", async () => {
+    const h = await harnessWithRealBudget("603");
+    await h.start();
+    h.discord.enqueue({ kind: "status", status: 403 }, { kind: "status", status: 403 });
+    await h.alarm();
+    expect((await h.budgetStub.snapshot()).invalid_in_window).toBe(1);
+
+    const again = await h.start();
+    expect(again.ok).toBe(true);
+    await h.alarm();
+    expect((await h.budgetStub.snapshot()).invalid_in_window).toBe(2);
+    expect(h.discord.requests).toHaveLength(2);
   });
 });
 

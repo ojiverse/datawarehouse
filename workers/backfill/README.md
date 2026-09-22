@@ -50,11 +50,15 @@ until an operator clears the halt after rotating the token.
 
 ## Budget coordination is fail-closed
 
-Reports of 401, 403 and 429 responses feed application-wide state in the Budget object (the
-invalid-request budget, the global pause and the credential halt). When such a report cannot be
-delivered, the Channel does not act on the response locally and does not issue another Discord
-request. Instead it stores the report and the outcome it would have applied as a pending
-coordination in SQLite, moves to `waiting`, and on each following Alarm retries the report first.
+Every Discord request is given a stable report identity (UUIDv7) before it is issued. Reports of
+401, 403 and 429 responses feed application-wide state in the Budget object (the invalid-request
+budget, the global pause and the credential halt), so the Channel first stores the report and the
+outcome it would apply as a pending coordination in SQLite, moves to `waiting`, and only then
+delivers the report; a failed delivery is retried on each following Alarm before any new Discord
+request. The Budget object keeps processed report identities for the invalid-request window and
+treats a re-sent identity as a no-op, so a Channel crash after a successful delivery can never
+count the same response twice or extend a global pause. A refetch is a new request with a new
+identity.
 Only once the Budget object has recorded the report is the deferred outcome applied (halt, fail
 or wait); clearing the pending record and storing that outcome happen in one SQLite
 transaction, so a crash after the report succeeded can only replay the report, never lose the

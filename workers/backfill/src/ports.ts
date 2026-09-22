@@ -1,4 +1,4 @@
-import type { Snowflake } from "./domain/ids";
+import type { Snowflake, UuidV7 } from "./domain/ids";
 import type { RateLimitHeaders, RateLimitScope } from "./domain/rate-limit";
 import type { ArchiveObject } from "./observation/archive-object";
 
@@ -68,6 +68,12 @@ export type BudgetDecision =
     };
 
 export type RequestReport = {
+  /**
+   * Stable identity of one Discord request, fixed before the request is issued. A coordination
+   * retry of the same response re-sends the same id; a refetch is a new request with a new id.
+   * The Budget owner uses it to make re-sends idempotent.
+   */
+  readonly report_id: UuidV7;
   readonly status: number;
   readonly scope: RateLimitScope | null;
   readonly global: boolean;
@@ -82,8 +88,12 @@ export interface BudgetGate {
   acquire(): Promise<BudgetDecision>;
   /**
    * Records the outcome of a request so the Budget owner can count invalid requests,
-   * honour global 429 pauses and halt on credential failure. Never throws to the caller's
-   * control flow; a failed report is logged and progress is unaffected.
+   * honour global 429 pauses and halt on credential failure. Idempotent on `report_id`:
+   * a re-sent report is a no-op success. Resolves only once the owner has durably recorded
+   * the report.
+   * @throws {Error} when the owner cannot be reached or cannot persist the report. Callers
+   *   reporting 401 / 403 / 429 must persist the report and retry it before issuing any new
+   *   request; callers reporting 2xx / 5xx may log and continue.
    */
   report(report: RequestReport): Promise<void>;
 }
